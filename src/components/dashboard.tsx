@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -15,20 +16,18 @@ import {
 import { logout } from "@/app/actions/auth";
 import {
   DEFAULT_DATA,
-  STORAGE_KEY,
   formatCurrency,
   formatLongDate,
   formatShortDate,
   getMonthBuckets,
   getSalaryCycleRange,
   isDateInRange,
-  normalizeFinanceData,
   parseInputDate,
   todayInputValue,
   toMonthKey,
   type FinanceData,
-  type SpendingType,
 } from "@/lib/finance";
+import { useFinanceStore } from "@/hooks/use-finance-store";
 
 type ExpenseFormState = {
   title: string;
@@ -38,23 +37,13 @@ type ExpenseFormState = {
   note: string;
 };
 
-type SavingsFormState = {
-  title: string;
-  amount: string;
-  bucketId: string;
-  date: string;
-  note: string;
-};
-
-type CategoryFormState = {
-  name: string;
-  color: string;
-  kind: SpendingType;
-};
-
-type BucketFormState = {
-  name: string;
-  color: string;
+const chartGrid = "#243041";
+const chartAxis = "#94a3b8";
+const tooltipStyle = {
+  backgroundColor: "#020617",
+  border: "1px solid #1e293b",
+  borderRadius: "16px",
+  color: "#e2e8f0",
 };
 
 const defaultExpenseForm = (data: FinanceData): ExpenseFormState => ({
@@ -65,64 +54,12 @@ const defaultExpenseForm = (data: FinanceData): ExpenseFormState => ({
   note: "",
 });
 
-const defaultSavingsForm = (data: FinanceData): SavingsFormState => ({
-  title: "",
-  amount: "",
-  bucketId: data.savingsBuckets[0]?.id ?? "",
-  date: todayInputValue(),
-  note: "",
-});
-
 export function Dashboard() {
-  const [data, setData] = useState<FinanceData>(DEFAULT_DATA);
-  const [isReady, setIsReady] = useState(false);
-  const [balanceInput, setBalanceInput] = useState("0");
+  const { data, isReady, addExpense, removeExpense, removeSavings } = useFinanceStore();
+  const [isExpenseModalOpen, setExpenseModalOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(
     defaultExpenseForm(DEFAULT_DATA),
   );
-  const [savingsForm, setSavingsForm] = useState<SavingsFormState>(
-    defaultSavingsForm(DEFAULT_DATA),
-  );
-  const [categoryForm, setCategoryForm] = useState<CategoryFormState>({
-    name: "",
-    color: "#8b5cf6",
-    kind: "needs",
-  });
-  const [bucketForm, setBucketForm] = useState<BucketFormState>({
-    name: "",
-    color: "#14b8a6",
-  });
-
-  useEffect(() => {
-    let parsedData = DEFAULT_DATA;
-
-    try {
-      const storedValue = window.localStorage.getItem(STORAGE_KEY);
-      parsedData = storedValue
-        ? normalizeFinanceData(JSON.parse(storedValue))
-        : DEFAULT_DATA;
-    } catch {
-      parsedData = DEFAULT_DATA;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      setData(parsedData);
-      setBalanceInput(parsedData.currentBalance.toString());
-      setExpenseForm(defaultExpenseForm(parsedData));
-      setSavingsForm(defaultSavingsForm(parsedData));
-      setIsReady(true);
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
-    if (!isReady) {
-      return;
-    }
-
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }, [data, isReady]);
 
   const categoryMap = useMemo(
     () => new Map(data.categories.map((item) => [item.id, item])),
@@ -287,25 +224,20 @@ export function Dashboard() {
   ];
   const habitTips = [
     savingsGap > 0
-      ? `Move ${formatCurrency(savingsGap)} into a savings bucket to get closer to the 20% savings lane.`
+      ? `Move ${formatCurrency(savingsGap)} into savings to get closer to the 20% lane.`
       : "Savings are on track or ahead of the 20% lane this cycle.",
     wantsSpent > targetWants
-      ? `Your wants are ${formatCurrency(wantsSpent - targetWants)} above the 30% guide, so pause shopping or eating out for now.`
-      : `You still have ${formatCurrency(wantsAvailable)} of discretionary room inside the 30% wants guide.`,
+      ? `Wants are ${formatCurrency(wantsSpent - targetWants)} above the 30% guide, so pause shopping or eating out for now.`
+      : `You still have ${formatCurrency(wantsAvailable)} of wants room inside the 30% guide.`,
     needsSpent > targetNeeds
-      ? `Essentials are ${formatCurrency(needsSpent - targetNeeds)} above the 50% guide. Review bills, groceries, and transport costs next.`
+      ? `Essentials are ${formatCurrency(needsSpent - targetNeeds)} above the 50% guide. Review bills, groceries, and transport next.`
       : "Essentials are staying inside the 50% lane so far.",
-    `Keep day-to-day spending near ${formatCurrency(dailyAllowance)} per day until salary lands.`,
+    `Keep daily spending near ${formatCurrency(dailyAllowance)} until salary lands.`,
   ];
 
-  const handleBalanceSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const nextBalance = Number(balanceInput);
-
-    setData((current) => ({
-      ...current,
-      currentBalance: Number.isFinite(nextBalance) ? nextBalance : 0,
-    }));
+  const openExpenseModal = () => {
+    setExpenseForm(defaultExpenseForm(data));
+    setExpenseModalOpen(true);
   };
 
   const handleAddExpense = (event: React.FormEvent<HTMLFormElement>) => {
@@ -316,473 +248,378 @@ export function Dashboard() {
       return;
     }
 
-    setData((current) => ({
-      ...current,
-      expenses: [
-        {
-          id: crypto.randomUUID(),
-          title: expenseForm.title.trim(),
-          amount,
-          categoryId: expenseForm.categoryId,
-          date: expenseForm.date,
-          note: expenseForm.note.trim(),
-        },
-        ...current.expenses,
-      ],
-    }));
-
-    setExpenseForm(defaultExpenseForm(data));
-  };
-
-  const handleAddSavings = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const amount = Number(savingsForm.amount);
-
-    if (!savingsForm.bucketId || !savingsForm.title.trim() || amount <= 0) {
-      return;
-    }
-
-    setData((current) => ({
-      ...current,
-      savingsEntries: [
-        {
-          id: crypto.randomUUID(),
-          title: savingsForm.title.trim(),
-          amount,
-          bucketId: savingsForm.bucketId,
-          date: savingsForm.date,
-          note: savingsForm.note.trim(),
-        },
-        ...current.savingsEntries,
-      ],
-    }));
-
-    setSavingsForm(defaultSavingsForm(data));
-  };
-
-  const handleAddCategory = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const name = categoryForm.name.trim();
-
-    if (!name) {
-      return;
-    }
-
-    const category = {
-      id: `${name.toLowerCase().replace(/\s+/g, "-")}-${crypto.randomUUID().slice(0, 6)}`,
-      name,
-      color: categoryForm.color,
-      kind: categoryForm.kind,
-    };
-
-    setData((current) => ({
-      ...current,
-      categories: [...current.categories, category],
-    }));
-
-    setCategoryForm((current) => ({ ...current, name: "" }));
-    setExpenseForm((current) => ({ ...current, categoryId: category.id }));
-  };
-
-  const handleAddBucket = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const name = bucketForm.name.trim();
-
-    if (!name) {
-      return;
-    }
-
-    const bucket = {
-      id: `${name.toLowerCase().replace(/\s+/g, "-")}-${crypto.randomUUID().slice(0, 6)}`,
-      name,
-      color: bucketForm.color,
-    };
-
-    setData((current) => ({
-      ...current,
-      savingsBuckets: [...current.savingsBuckets, bucket],
-    }));
-
-    setBucketForm({ name: "", color: bucketForm.color });
-    setSavingsForm((current) => ({ ...current, bucketId: bucket.id }));
-  };
-
-  const removeExpense = (id: string) => {
-    setData((current) => ({
-      ...current,
-      expenses: current.expenses.filter((expense) => expense.id !== id),
-    }));
-  };
-
-  const removeSavings = (id: string) => {
-    setData((current) => ({
-      ...current,
-      savingsEntries: current.savingsEntries.filter((entry) => entry.id !== id),
-    }));
-  };
-
-  const removeCategory = (id: string) => {
-    if (data.expenses.some((expense) => expense.categoryId === id)) {
-      window.alert("Delete the expenses in this category first.");
-      return;
-    }
-
-    setData((current) => {
-      const categories = current.categories.filter((category) => category.id !== id);
-
-      return {
-        ...current,
-        categories,
-      };
+    addExpense({
+      title: expenseForm.title,
+      amount,
+      categoryId: expenseForm.categoryId,
+      date: expenseForm.date,
+      note: expenseForm.note,
     });
 
-    setExpenseForm((current) => ({
-      ...current,
-      categoryId: current.categoryId === id ? "" : current.categoryId,
-    }));
-  };
-
-  const removeBucket = (id: string) => {
-    if (data.savingsEntries.some((entry) => entry.bucketId === id)) {
-      window.alert("Delete the savings entries in this bucket first.");
-      return;
-    }
-
-    setData((current) => ({
-      ...current,
-      savingsBuckets: current.savingsBuckets.filter((bucket) => bucket.id !== id),
-    }));
-
-    setSavingsForm((current) => ({
-      ...current,
-      bucketId: current.bucketId === id ? "" : current.bucketId,
-    }));
+    setExpenseForm(defaultExpenseForm(data));
+    setExpenseModalOpen(false);
   };
 
   if (!isReady) {
     return (
       <div className="px-4 py-10">
-        <div className="mx-auto max-w-6xl rounded-[32px] border border-white/50 bg-white/80 p-6 shadow-[0_20px_80px_rgba(15,23,42,0.12)]">
-          <p className="text-sm text-slate-500">Loading your dashboard...</p>
+        <div className="mx-auto max-w-6xl rounded-[32px] border border-slate-800 bg-slate-950/80 p-6">
+          <p className="text-sm text-slate-400">Loading dashboard...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="px-4 py-5 sm:px-6">
-      <div className="mx-auto flex max-w-6xl flex-col gap-5">
-        <section className="rounded-[32px] border border-white/60 bg-[radial-gradient(circle_at_top_left,_rgba(167,139,250,0.22),_transparent_36%),linear-gradient(135deg,_rgba(255,255,255,0.96),_rgba(240,249,255,0.92))] p-5 shadow-[0_20px_80px_rgba(15,23,42,0.12)] backdrop-blur">
-          <div className="flex flex-col gap-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-violet-600">
-                  Personal Finance
-                </p>
-                <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-                  Expense and savings command center
-                </h1>
-                <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
-                  Track spending by category, monitor savings buckets like SPI,
-                  and read your money through salary-cycle analytics.
-                </p>
+    <>
+      <div className="px-4 py-5 sm:px-6">
+        <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-28">
+          <section className="rounded-[32px] border border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.22),_transparent_38%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(2,6,23,0.98))] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
+            <div className="flex flex-col gap-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-violet-300">
+                    Personal Finance
+                  </p>
+                  <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">
+                    Dark money dashboard
+                  </h1>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
+                    Phone-first insights for expenses, savings, and healthier spending.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/settings"
+                    className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                  >
+                    Settings
+                  </Link>
+                  <form action={logout}>
+                    <button
+                      type="submit"
+                      className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                    >
+                      Lock
+                    </button>
+                  </form>
+                </div>
               </div>
 
-              <form action={logout}>
-                <button
-                  type="submit"
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                >
-                  Lock
-                </button>
-              </form>
-            </div>
-
-            <div className="rounded-[28px] bg-slate-950 p-5 text-white shadow-lg">
-              <div className="flex flex-col gap-3">
-                <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-400">
-                  Current net balance
-                </p>
-                <p className="text-4xl font-semibold tracking-tight">
-                  {formatCurrency(data.currentBalance)}
-                </p>
-                <p className="text-sm text-slate-300">
-                  Salary cycle: {formatLongDate(cycle.start)} to{" "}
-                  {formatLongDate(cycle.end)}
-                </p>
+              <div className="rounded-[28px] border border-slate-800 bg-slate-900/85 p-5 text-white">
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">
+                    Current net balance
+                  </p>
+                  <p className="text-4xl font-semibold tracking-tight">
+                    {formatCurrency(data.currentBalance)}
+                  </p>
+                  <p className="text-sm text-slate-400">
+                    Salary cycle: {formatLongDate(cycle.start)} to {formatLongDate(cycle.end)}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <StatCard label="Cycle spend" value={formatCurrency(currentCycleSpent)} />
-          <StatCard label="Cycle saved" value={formatCurrency(currentCycleSaved)} />
-          <StatCard label="Savings rate" value={`${savingsRate}%`} />
-          <StatCard label="Days to salary" value={`${cycle.daysLeft}`} />
-          <StatCard label="Projected spend" value={formatCurrency(projectedSpend)} />
-          <StatCard label="Top category" value={topCategory} />
-        </section>
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <StatCard label="Cycle spend" value={formatCurrency(currentCycleSpent)} />
+            <StatCard label="Cycle saved" value={formatCurrency(currentCycleSaved)} />
+            <StatCard label="Savings rate" value={`${savingsRate}%`} />
+            <StatCard label="Days to salary" value={`${cycle.daysLeft}`} />
+            <StatCard label="Projected spend" value={formatCurrency(projectedSpend)} />
+            <StatCard label="Top category" value={topCategory} />
+          </section>
 
-        <section className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
-          <Surface
-            title="Spending by category"
-            description="Current salary cycle"
-          >
-            {expenseByCategory.length ? (
-              <div className="h-72">
+          <section className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
+            <Surface title="Spending by category" description="Current salary cycle">
+              {expenseByCategory.length ? (
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={expenseByCategory}>
+                      <CartesianGrid vertical={false} stroke={chartGrid} />
+                      <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fill: chartAxis, fontSize: 12 }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fill: chartAxis, fontSize: 12 }}
+                        tickFormatter={(value) => `${Math.round(value / 1000)}k`}
+                      />
+                      <Tooltip
+                        formatter={(value) => formatCurrency(Number(value ?? 0))}
+                        cursor={{ fill: "rgba(51,65,85,0.25)" }}
+                        contentStyle={tooltipStyle}
+                      />
+                      <Bar dataKey="total" radius={[12, 12, 0, 0]}>
+                        {expenseByCategory.map((item) => (
+                          <Cell key={item.name} fill={item.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyState text="Tap the + button to add your first expense." />
+              )}
+            </Surface>
+
+            <Surface title="Savings split" description="All-time by bucket">
+              {savingsByBucket.length ? (
+                <div className="space-y-4">
+                  {savingsByBucket.map((bucket) => (
+                    <div key={bucket.name} className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium text-slate-200">{bucket.name}</span>
+                        <span className="text-slate-400">
+                          {formatCurrency(bucket.total)}
+                        </span>
+                      </div>
+                      <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${Math.max(
+                              12,
+                              Math.round((bucket.total / totalSavings) * 100),
+                            )}%`,
+                            backgroundColor: bucket.color,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState text="Savings buckets start filling after you add entries from settings." />
+              )}
+            </Surface>
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+            <Surface title="Monthly comparison" description="Last 6 calendar months">
+              <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={expenseByCategory}>
-                    <CartesianGrid vertical={false} stroke="#e2e8f0" />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                  <BarChart data={monthlyComparison}>
+                    <CartesianGrid vertical={false} stroke={chartGrid} />
+                    <XAxis
+                      dataKey="month"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: chartAxis, fontSize: 12 }}
+                    />
                     <YAxis
                       tickLine={false}
                       axisLine={false}
+                      tick={{ fill: chartAxis, fontSize: 12 }}
                       tickFormatter={(value) => `${Math.round(value / 1000)}k`}
                     />
                     <Tooltip
                       formatter={(value) => formatCurrency(Number(value ?? 0))}
-                      cursor={{ fill: "rgba(148, 163, 184, 0.12)" }}
+                      cursor={{ fill: "rgba(51,65,85,0.25)" }}
+                      contentStyle={tooltipStyle}
                     />
-                    <Bar dataKey="total" radius={[12, 12, 0, 0]}>
-                      {expenseByCategory.map((item) => (
-                        <Cell key={item.name} fill={item.color} />
-                      ))}
-                    </Bar>
+                    <Legend wrapperStyle={{ color: "#cbd5e1" }} />
+                    <Bar dataKey="spent" name="Spent" fill="#8b5cf6" radius={[10, 10, 0, 0]} />
+                    <Bar dataKey="saved" name="Saved" fill="#14b8a6" radius={[10, 10, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            ) : (
-              <EmptyState text="Add an expense to see which category is consuming the most money this cycle." />
-            )}
-          </Surface>
+            </Surface>
 
-          <Surface title="Savings split" description="All-time by bucket">
-            {savingsByBucket.length ? (
-              <div className="space-y-4">
-                {savingsByBucket.map((bucket) => (
-                  <div key={bucket.name} className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-slate-700">{bucket.name}</span>
-                      <span className="text-slate-500">
-                        {formatCurrency(bucket.total)}
-                      </span>
+            <Surface title="Recent activity" description="Latest expenses and savings">
+              <div className="space-y-3">
+                {recentActivity.length ? (
+                  recentActivity.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3"
+                    >
+                      <div>
+                        <p className="font-medium text-slate-100">{item.title}</p>
+                        <p className="text-sm text-slate-500">
+                          {item.tag} • {formatShortDate(item.date)}
+                        </p>
+                      </div>
+                      <p
+                        className={`text-sm font-semibold ${
+                          item.tone === "expense" ? "text-rose-400" : "text-emerald-400"
+                        }`}
+                      >
+                        {item.tone === "expense" ? "-" : "+"}
+                        {formatCurrency(item.amount)}
+                      </p>
                     </div>
-                    <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${Math.max(
-                            12,
-                            Math.round((bucket.total / totalSavings) * 100),
-                          )}%`,
-                          backgroundColor: bucket.color,
-                        }}
-                      />
-                    </div>
+                  ))
+                ) : (
+                  <EmptyState text="Your latest movements appear here after the first expense or savings entry." />
+                )}
+              </div>
+            </Surface>
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-2">
+            <Surface title="Quick signals" description="A glanceable reading of this cycle">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <MiniInsight
+                  label="Available after cycle spend"
+                  value={formatCurrency(data.currentBalance - currentCycleSpent)}
+                />
+                <MiniInsight
+                  label="Total tracked savings"
+                  value={formatCurrency(totalSavings)}
+                />
+                <MiniInsight label="Expense entries" value={`${data.expenses.length}`} />
+                <MiniInsight label="Savings entries" value={`${data.savingsEntries.length}`} />
+              </div>
+            </Surface>
+
+            <Surface
+              title="Habit actions"
+              description="The dashboard keeps coaching you toward a better split"
+            >
+              <div className="grid gap-3 sm:grid-cols-3">
+                <BudgetRuleCard title="Needs" tone="indigo" actual={needsSpent} target={targetNeeds} />
+                <BudgetRuleCard title="Wants" tone="orange" actual={wantsSpent} target={targetWants} />
+                <BudgetRuleCard
+                  title="Savings"
+                  tone="emerald"
+                  actual={currentCycleSaved}
+                  target={targetSavings}
+                />
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {habitTips.map((tip) => (
+                  <div
+                    key={tip}
+                    className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm leading-6 text-slate-300"
+                  >
+                    {tip}
                   </div>
                 ))}
               </div>
-            ) : (
-              <EmptyState text="Savings buckets start filling once you add entries such as SPI or emergency fund contributions." />
-            )}
-          </Surface>
-        </section>
+            </Surface>
+          </section>
 
-        <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-          <Surface title="Monthly comparison" description="Last 6 calendar months">
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyComparison}>
-                  <CartesianGrid vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="month" tickLine={false} axisLine={false} />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(value) => `${Math.round(value / 1000)}k`}
-                  />
-                  <Tooltip
-                    formatter={(value) => formatCurrency(Number(value ?? 0))}
-                    cursor={{ fill: "rgba(148, 163, 184, 0.12)" }}
-                  />
-                  <Legend />
-                  <Bar dataKey="spent" name="Spent" fill="#8b5cf6" radius={[10, 10, 0, 0]} />
-                  <Bar dataKey="saved" name="Saved" fill="#14b8a6" radius={[10, 10, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Surface>
-
-          <Surface title="Recent activity" description="Latest expenses and savings">
-            <div className="space-y-3">
-              {recentActivity.length ? (
-                recentActivity.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
-                  >
-                    <div>
-                      <p className="font-medium text-slate-900">{item.title}</p>
-                      <p className="text-sm text-slate-500">
-                        {item.tag} • {formatShortDate(item.date)}
-                      </p>
-                    </div>
-                    <p
-                      className={`text-sm font-semibold ${
-                        item.tone === "expense" ? "text-rose-600" : "text-emerald-600"
-                      }`}
-                    >
-                      {item.tone === "expense" ? "-" : "+"}
-                      {formatCurrency(item.amount)}
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <EmptyState text="Your latest movements appear here after the first expense or savings entry." />
-              )}
-            </div>
-          </Surface>
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-2">
-          <Surface title="Account settings" description="Update the live balance and salary date">
-            <form onSubmit={handleBalanceSubmit} className="space-y-4">
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-700">
-                  Current account balance
-                </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={balanceInput}
-                  onChange={(event) => setBalanceInput(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-violet-400 focus:bg-white"
-                />
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-700">
-                  Salary usually arrives on
-                </span>
-                <select
-                  value={data.salaryDay}
-                  onChange={(event) =>
-                    setData((current) => ({
-                      ...current,
-                      salaryDay: Number(event.target.value) === 26 ? 26 : 25,
-                    }))
-                  }
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-violet-400 focus:bg-white"
-                >
-                  <option value={25}>25th</option>
-                  <option value={26}>26th</option>
-                </select>
-              </label>
-
-              <button
-                type="submit"
-                className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                Save balance
-              </button>
-            </form>
-          </Surface>
-
-          <Surface title="Quick signals" description="A glanceable reading of this cycle">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <MiniInsight
-                label="Available after cycle spend"
-                value={formatCurrency(data.currentBalance - currentCycleSpent)}
-              />
-              <MiniInsight
-                label="Total tracked savings"
-                value={formatCurrency(totalSavings)}
-              />
-              <MiniInsight
-                label="Expense entries"
-                value={`${data.expenses.length}`}
-              />
-              <MiniInsight
-                label="Savings entries"
-                value={`${data.savingsEntries.length}`}
-              />
-            </div>
-          </Surface>
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-          <Surface
-            title="Habit coach"
-            description="A practical 50/30/20 check based on this cycle tracked money"
-          >
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
-                The app uses your current balance plus this cycle tracked spending and
-                savings as a planning base of {formatCurrency(planningBase)}.
+          <section className="grid gap-5 xl:grid-cols-2">
+            <Surface title="Budget lanes" description="Target vs actual 50 / 30 / 20">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-4 text-sm leading-6 text-slate-300">
+                Planning base: {formatCurrency(planningBase)}. This uses your live balance plus
+                tracked money in the current cycle.
               </div>
-
-              <div className="h-72">
+              <div className="mt-4 h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={habitRuleChartData}>
-                    <CartesianGrid vertical={false} stroke="#e2e8f0" />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                    <CartesianGrid vertical={false} stroke={chartGrid} />
+                    <XAxis
+                      dataKey="name"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: chartAxis, fontSize: 12 }}
+                    />
                     <YAxis
                       tickLine={false}
                       axisLine={false}
+                      tick={{ fill: chartAxis, fontSize: 12 }}
                       tickFormatter={(value) => `${Math.round(value / 1000)}k`}
                     />
                     <Tooltip
                       formatter={(value) => formatCurrency(Number(value ?? 0))}
-                      cursor={{ fill: "rgba(148, 163, 184, 0.12)" }}
+                      cursor={{ fill: "rgba(51,65,85,0.25)" }}
+                      contentStyle={tooltipStyle}
                     />
-                    <Legend />
+                    <Legend wrapperStyle={{ color: "#cbd5e1" }} />
                     <Bar dataKey="Needs" stackId="habit" fill="#6366f1" radius={[10, 10, 0, 0]} />
                     <Bar dataKey="Wants" stackId="habit" fill="#f97316" radius={[10, 10, 0, 0]} />
                     <Bar dataKey="Savings" stackId="habit" fill="#14b8a6" radius={[10, 10, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
-          </Surface>
+            </Surface>
 
-          <Surface title="Habit actions" description="Simple rules to keep spending healthier">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <BudgetRuleCard
-                title="Needs"
-                tone="indigo"
-                actual={needsSpent}
-                target={targetNeeds}
-              />
-              <BudgetRuleCard
-                title="Wants"
-                tone="orange"
-                actual={wantsSpent}
-                target={targetWants}
-              />
-              <BudgetRuleCard
-                title="Savings"
-                tone="emerald"
-                actual={currentCycleSaved}
-                target={targetSavings}
-              />
+            <Surface title="Expense log" description="Latest spending records">
+              <div className="space-y-3">
+                {data.expenses.length ? (
+                  data.expenses.map((expense) => (
+                    <LedgerRow
+                      key={expense.id}
+                      title={expense.title}
+                      subtitle={`${categoryMap.get(expense.categoryId)?.name ?? "Category"} • ${formatShortDate(expense.date)}`}
+                      amount={`-${formatCurrency(expense.amount)}`}
+                      amountClassName="text-rose-400"
+                      onDelete={() => removeExpense(expense.id)}
+                    />
+                  ))
+                ) : (
+                  <EmptyState text="No expenses added yet." />
+                )}
+              </div>
+            </Surface>
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-1">
+            <Surface title="Savings log" description="Latest contributions">
+              <div className="space-y-3">
+                {data.savingsEntries.length ? (
+                  data.savingsEntries.map((entry) => (
+                    <LedgerRow
+                      key={entry.id}
+                      title={entry.title}
+                      subtitle={`${bucketMap.get(entry.bucketId)?.name ?? "Savings"} • ${formatShortDate(entry.date)}`}
+                      amount={`+${formatCurrency(entry.amount)}`}
+                      amountClassName="text-emerald-400"
+                      onDelete={() => removeSavings(entry.id)}
+                    />
+                  ))
+                ) : (
+                  <EmptyState text="No savings entries added yet." />
+                )}
+              </div>
+            </Surface>
+          </section>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={openExpenseModal}
+        className="fixed bottom-5 right-5 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-violet-600 text-4xl font-light text-white shadow-[0_20px_50px_rgba(124,58,237,0.45)] transition hover:scale-[1.02] hover:bg-violet-500"
+        aria-label="Add expense"
+      >
+        +
+      </button>
+
+      {isExpenseModalOpen ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm">
+          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-lg rounded-t-[32px] border border-slate-800 bg-slate-950 p-5 shadow-2xl sm:bottom-6 sm:rounded-[32px]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-300">
+                  Quick Add
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-slate-50">
+                  Add expenditure
+                </h2>
+                <p className="mt-2 text-sm text-slate-400">
+                  Use the floating action button any time you spend money.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExpenseModalOpen(false)}
+                className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+              >
+                Close
+              </button>
             </div>
 
-            <div className="mt-5 space-y-3">
-              {habitTips.map((tip) => (
-                <div
-                  key={tip}
-                  className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700"
-                >
-                  {tip}
-                </div>
-              ))}
-            </div>
-          </Surface>
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-2">
-          <Surface title="Add expense" description="Map every spend into a category">
-            <form onSubmit={handleAddExpense} className="space-y-4">
+            <form onSubmit={handleAddExpense} className="mt-6 space-y-4">
               <Input
                 label="Expense title"
                 value={expenseForm.title}
@@ -843,232 +680,15 @@ export function Dashboard() {
 
               <button
                 type="submit"
-                className="rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-700"
+                className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
               >
-                Add expense
+                Save expense
               </button>
             </form>
-          </Surface>
-
-          <Surface title="Add savings" description="Track contributions like SPI and goals">
-            <form onSubmit={handleAddSavings} className="space-y-4">
-              <Input
-                label="Savings title"
-                value={savingsForm.title}
-                onChange={(value) =>
-                  setSavingsForm((current) => ({ ...current, title: value }))
-                }
-                placeholder="SPI, emergency fund..."
-              />
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="Amount"
-                  type="number"
-                  value={savingsForm.amount}
-                  onChange={(value) =>
-                    setSavingsForm((current) => ({ ...current, amount: value }))
-                  }
-                  placeholder="0"
-                />
-                <Field label="Savings bucket">
-                  <select
-                    value={savingsForm.bucketId}
-                    onChange={(event) =>
-                      setSavingsForm((current) => ({
-                        ...current,
-                        bucketId: event.target.value,
-                      }))
-                    }
-                    className={fieldClassName}
-                  >
-                    {data.savingsBuckets.map((bucket) => (
-                      <option key={bucket.id} value={bucket.id}>
-                        {bucket.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="Date"
-                  type="date"
-                  value={savingsForm.date}
-                  onChange={(value) =>
-                    setSavingsForm((current) => ({ ...current, date: value }))
-                  }
-                />
-                <Input
-                  label="Note"
-                  value={savingsForm.note}
-                  onChange={(value) =>
-                    setSavingsForm((current) => ({ ...current, note: value }))
-                  }
-                  placeholder="Optional detail"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
-              >
-                Add savings
-              </button>
-            </form>
-          </Surface>
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-2">
-          <Surface title="Expense categories" description="Create custom spending groups">
-            <form onSubmit={handleAddCategory} className="grid gap-4 sm:grid-cols-2">
-              <Input
-                label="Category name"
-                value={categoryForm.name}
-                onChange={(value) =>
-                  setCategoryForm((current) => ({ ...current, name: value }))
-                }
-                placeholder="Medical, education..."
-              />
-              <Field label="Color">
-                <input
-                  type="color"
-                  value={categoryForm.color}
-                  onChange={(event) =>
-                    setCategoryForm((current) => ({
-                      ...current,
-                      color: event.target.value,
-                    }))
-                  }
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 p-2"
-                />
-              </Field>
-              <Field label="Budget type">
-                <select
-                  value={categoryForm.kind}
-                  onChange={(event) =>
-                    setCategoryForm((current) => ({
-                      ...current,
-                      kind: event.target.value === "wants" ? "wants" : "needs",
-                    }))
-                  }
-                  className={fieldClassName}
-                >
-                  <option value="needs">Need / essential</option>
-                  <option value="wants">Want / lifestyle</option>
-                </select>
-              </Field>
-              <div className="flex items-end sm:col-span-2">
-                <button
-                  type="submit"
-                  className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 sm:w-auto"
-                >
-                  Add
-                </button>
-              </div>
-            </form>
-
-            <div className="mt-5 space-y-3">
-              {data.categories.map((category) => (
-                <TagRow
-                  key={category.id}
-                  name={category.name}
-                  color={category.color}
-                  subtitle={category.kind === "needs" ? "Need / essential" : "Want / lifestyle"}
-                  onDelete={() => removeCategory(category.id)}
-                />
-              ))}
-            </div>
-          </Surface>
-
-          <Surface title="Savings buckets" description="Create groups like SPI, travel, or investments">
-            <form onSubmit={handleAddBucket} className="grid gap-4 sm:grid-cols-[1fr_auto_auto]">
-              <Input
-                label="Bucket name"
-                value={bucketForm.name}
-                onChange={(value) =>
-                  setBucketForm((current) => ({ ...current, name: value }))
-                }
-                placeholder="Home fund, MF, SPI..."
-              />
-              <Field label="Color">
-                <input
-                  type="color"
-                  value={bucketForm.color}
-                  onChange={(event) =>
-                    setBucketForm((current) => ({
-                      ...current,
-                      color: event.target.value,
-                    }))
-                  }
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 p-2"
-                />
-              </Field>
-              <div className="flex items-end">
-                <button
-                  type="submit"
-                  className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  Add
-                </button>
-              </div>
-            </form>
-
-            <div className="mt-5 space-y-3">
-              {data.savingsBuckets.map((bucket) => (
-                <TagRow
-                  key={bucket.id}
-                  name={bucket.name}
-                  color={bucket.color}
-                  onDelete={() => removeBucket(bucket.id)}
-                />
-              ))}
-            </div>
-          </Surface>
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-2">
-          <Surface title="Expense log" description="Latest spending records">
-            <div className="space-y-3">
-              {data.expenses.length ? (
-                data.expenses.map((expense) => (
-                  <LedgerRow
-                    key={expense.id}
-                    title={expense.title}
-                    subtitle={`${categoryMap.get(expense.categoryId)?.name ?? "Category"} • ${formatShortDate(expense.date)}`}
-                    amount={`-${formatCurrency(expense.amount)}`}
-                    amountClassName="text-rose-600"
-                    onDelete={() => removeExpense(expense.id)}
-                  />
-                ))
-              ) : (
-                <EmptyState text="No expenses added yet." />
-              )}
-            </div>
-          </Surface>
-
-          <Surface title="Savings log" description="Latest contributions">
-            <div className="space-y-3">
-              {data.savingsEntries.length ? (
-                data.savingsEntries.map((entry) => (
-                  <LedgerRow
-                    key={entry.id}
-                    title={entry.title}
-                    subtitle={`${bucketMap.get(entry.bucketId)?.name ?? "Savings"} • ${formatShortDate(entry.date)}`}
-                    amount={`+${formatCurrency(entry.amount)}`}
-                    amountClassName="text-emerald-600"
-                    onDelete={() => removeSavings(entry.id)}
-                  />
-                ))
-              ) : (
-                <EmptyState text="No savings entries added yet." />
-              )}
-            </div>
-          </Surface>
-        </section>
-      </div>
-    </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1082,9 +702,9 @@ function Surface({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[28px] border border-white/60 bg-white/85 p-5 shadow-[0_20px_80px_rgba(15,23,42,0.08)] backdrop-blur">
+    <section className="rounded-[28px] border border-slate-800 bg-slate-950/80 p-5 shadow-[0_24px_70px_rgba(2,6,23,0.35)]">
       <div className="mb-5">
-        <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+        <h2 className="text-lg font-semibold text-slate-50">{title}</h2>
         <p className="mt-1 text-sm text-slate-500">{description}</p>
       </div>
       {children}
@@ -1094,24 +714,20 @@ function Surface({
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[24px] border border-white/60 bg-white/80 p-4 shadow-[0_10px_40px_rgba(15,23,42,0.06)]">
+    <div className="rounded-[24px] border border-slate-800 bg-slate-950/80 p-4">
       <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
         {label}
       </p>
-      <p className="mt-2 text-lg font-semibold tracking-tight text-slate-950">
-        {value}
-      </p>
+      <p className="mt-2 text-lg font-semibold tracking-tight text-slate-50">{value}</p>
     </div>
   );
 }
 
 function MiniInsight({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-4">
       <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
-        {value}
-      </p>
+      <p className="mt-1 text-xl font-semibold tracking-tight text-slate-50">{value}</p>
     </div>
   );
 }
@@ -1125,7 +741,7 @@ function Field({
 }) {
   return (
     <label className="block space-y-2">
-      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <span className="text-sm font-medium text-slate-300">{label}</span>
       {children}
     </label>
   );
@@ -1157,40 +773,6 @@ function Input({
   );
 }
 
-function TagRow({
-  name,
-  color,
-  subtitle,
-  onDelete,
-}: {
-  name: string;
-  color: string;
-  subtitle?: string;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-      <div className="flex items-center gap-3">
-        <span
-          className="inline-flex h-3 w-3 rounded-full"
-          style={{ backgroundColor: color }}
-        />
-        <div>
-          <p className="font-medium text-slate-800">{name}</p>
-          {subtitle ? <p className="text-sm text-slate-500">{subtitle}</p> : null}
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-white hover:text-rose-600"
-      >
-        Delete
-      </button>
-    </div>
-  );
-}
-
 function BudgetRuleCard({
   title,
   actual,
@@ -1213,16 +795,16 @@ function BudgetRuleCard({
         : "Over";
   const toneClassName =
     tone === "indigo"
-      ? "bg-indigo-50 text-indigo-700 border-indigo-100"
+      ? "bg-indigo-500/10 text-indigo-200 border-indigo-500/20"
       : tone === "orange"
-        ? "bg-orange-50 text-orange-700 border-orange-100"
-        : "bg-emerald-50 text-emerald-700 border-emerald-100";
+        ? "bg-orange-500/10 text-orange-200 border-orange-500/20"
+        : "bg-emerald-500/10 text-emerald-200 border-emerald-500/20";
 
   return (
     <div className={`rounded-2xl border px-4 py-4 ${toneClassName}`}>
       <div className="flex items-center justify-between gap-3">
         <p className="font-semibold">{title}</p>
-        <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold">
+        <span className="rounded-full bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-100">
           {status}
         </span>
       </div>
@@ -1246,9 +828,9 @@ function LedgerRow({
   onDelete: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+    <div className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3">
       <div>
-        <p className="font-medium text-slate-900">{title}</p>
+        <p className="font-medium text-slate-100">{title}</p>
         <p className="text-sm text-slate-500">{subtitle}</p>
       </div>
       <div className="flex items-center gap-3">
@@ -1256,7 +838,7 @@ function LedgerRow({
         <button
           type="button"
           onClick={onDelete}
-          className="rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-white hover:text-rose-600"
+          className="rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-800 hover:text-rose-300"
         >
           Delete
         </button>
@@ -1267,11 +849,11 @@ function LedgerRow({
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm leading-6 text-slate-500">
+    <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900 px-4 py-8 text-center text-sm leading-6 text-slate-500">
       {text}
     </div>
   );
 }
 
 const fieldClassName =
-  "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base outline-none transition focus:border-violet-400 focus:bg-white";
+  "w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-base text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-violet-500 focus:bg-slate-950";

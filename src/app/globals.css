@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #eff6ff;
-  --foreground: #0f172a;
+  --background: #020617;
+  --foreground: #f8fafc;
 }
 
 @theme inline {
@@ -36,5 +36,5 @@ textarea {
 }
 
 ::selection {
-  background: rgba(139, 92, 246, 0.22);
+  background: rgba(139, 92, 246, 0.34);
 }

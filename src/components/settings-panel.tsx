@@ -29,6 +29,8 @@ export function SettingsPanel() {
   const {
     data,
     isReady,
+    syncError,
+    retrySync,
     updateBalance,
     updateSalaryDay,
     addSavings,
@@ -164,6 +166,21 @@ export function SettingsPanel() {
   return (
     <div className="px-4 py-5 sm:px-6">
       <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-10">
+        {syncError ? (
+          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            <div className="flex items-center justify-between gap-3">
+              <span>{syncError}</span>
+              <button
+                type="button"
+                onClick={() => void retrySync()}
+                className="rounded-xl border border-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/10"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <section className="rounded-[32px] border border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.18),_transparent_40%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(2,6,23,0.98))] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
           <div className="flex flex-col gap-5">
             <div className="flex items-start justify-between gap-4">

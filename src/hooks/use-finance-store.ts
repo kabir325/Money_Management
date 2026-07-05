@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DEFAULT_DATA,
   STORAGE_KEY,
   normalizeFinanceData,
+  withUpdatedTimestamp,
   type FinanceData,
   type SalaryDay,
   type SpendingType,
@@ -37,54 +38,157 @@ type AddBucketInput = {
   color: string;
 };
 
+const SYNC_POLL_MS = 5000;
+
 export function useFinanceStore() {
   const [data, setData] = useState<FinanceData>(DEFAULT_DATA);
   const [isReady, setIsReady] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const latestDataRef = useRef<FinanceData>(DEFAULT_DATA);
 
   useEffect(() => {
-    let parsedData = DEFAULT_DATA;
+    latestDataRef.current = data;
+  }, [data]);
 
-    try {
-      const storedValue = window.localStorage.getItem(STORAGE_KEY);
-      parsedData = storedValue
-        ? normalizeFinanceData(JSON.parse(storedValue))
-        : DEFAULT_DATA;
-    } catch {
-      parsedData = DEFAULT_DATA;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      setData(parsedData);
-      setIsReady(true);
+  const applyRemoteData = useCallback((incomingData: FinanceData) => {
+    setData((current) => {
+      return incomingData.updatedAt > current.updatedAt ? incomingData : current;
     });
-
-    return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  useEffect(() => {
-    if (!isReady) {
-      return;
-    }
+  const persistRemoteData = useCallback((nextData: FinanceData) => {
+    return (async () => {
+      try {
+        const response = await fetch("/api/finance", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "same-origin",
+          body: JSON.stringify({ data: nextData }),
+        });
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }, [data, isReady]);
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          throw new Error(payload?.error ?? "Unable to save synced data.");
+        }
+
+        const payload = (await response.json()) as { data: FinanceData };
+        const savedData = normalizeFinanceData(payload.data);
+        latestDataRef.current = savedData;
+        setData(savedData);
+        setSyncError(null);
+      } catch (error) {
+        setSyncError(
+          error instanceof Error ? error.message : "Unable to save your finance data.",
+        );
+      }
+    })();
+  }, []);
+
+  const loadRemoteData = useCallback(
+    async (mode: "initial" | "poll" = "poll") => {
+      try {
+        const response = await fetch("/api/finance", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          throw new Error(payload?.error ?? "Unable to load synced data.");
+        }
+
+        const payload = (await response.json()) as { data: FinanceData };
+        const remoteData = normalizeFinanceData(payload.data);
+        const legacyLocalData =
+          mode === "initial" ? getLegacyLocalData() : null;
+
+        if (mode === "initial" && legacyLocalData && shouldMigrateLegacyData(remoteData)) {
+          const migratedData = withUpdatedTimestamp(legacyLocalData);
+          latestDataRef.current = migratedData;
+          setData(migratedData);
+          void persistRemoteData(migratedData);
+        } else {
+          applyRemoteData(remoteData);
+        }
+
+        setSyncError(null);
+
+        if (mode === "initial") {
+          setIsReady(true);
+        }
+      } catch (error) {
+        if (mode === "initial") {
+          setData(DEFAULT_DATA);
+          setIsReady(true);
+        }
+
+        setSyncError(
+          error instanceof Error ? error.message : "Unable to sync your finance data.",
+        );
+      }
+    },
+    [applyRemoteData, persistRemoteData],
+  );
+
+  const updateData = useCallback(
+    (updater: (current: FinanceData) => FinanceData) => {
+      setData((current) => {
+        const nextData = withUpdatedTimestamp(
+          normalizeFinanceData(updater(current)),
+        );
+        latestDataRef.current = nextData;
+        void persistRemoteData(nextData);
+        return nextData;
+      });
+    },
+    [persistRemoteData],
+  );
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      void loadRemoteData("initial");
+    });
+
+    const interval = window.setInterval(() => {
+      void loadRemoteData("poll");
+    }, SYNC_POLL_MS);
+
+    const onFocus = () => {
+      void loadRemoteData("poll");
+    };
+
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [loadRemoteData]);
 
   const updateBalance = (currentBalance: number) => {
-    setData((current) => ({
+    updateData((current) => ({
       ...current,
       currentBalance: Number.isFinite(currentBalance) ? currentBalance : 0,
     }));
   };
 
   const updateSalaryDay = (salaryDay: SalaryDay) => {
-    setData((current) => ({
+    updateData((current) => ({
       ...current,
       salaryDay,
     }));
   };
 
   const addExpense = (input: AddExpenseInput) => {
-    setData((current) => ({
+    updateData((current) => ({
       ...current,
       expenses: [
         {
@@ -101,7 +205,7 @@ export function useFinanceStore() {
   };
 
   const addSavings = (input: AddSavingsInput) => {
-    setData((current) => ({
+    updateData((current) => ({
       ...current,
       savingsEntries: [
         {
@@ -125,7 +229,7 @@ export function useFinanceStore() {
       kind: input.kind,
     };
 
-    setData((current) => ({
+    updateData((current) => ({
       ...current,
       categories: [...current.categories, category],
     }));
@@ -140,7 +244,7 @@ export function useFinanceStore() {
       color: input.color,
     };
 
-    setData((current) => ({
+    updateData((current) => ({
       ...current,
       savingsBuckets: [...current.savingsBuckets, bucket],
     }));
@@ -149,25 +253,25 @@ export function useFinanceStore() {
   };
 
   const removeExpense = (id: string) => {
-    setData((current) => ({
+    updateData((current) => ({
       ...current,
       expenses: current.expenses.filter((expense) => expense.id !== id),
     }));
   };
 
   const removeSavings = (id: string) => {
-    setData((current) => ({
+    updateData((current) => ({
       ...current,
       savingsEntries: current.savingsEntries.filter((entry) => entry.id !== id),
     }));
   };
 
   const removeCategory = (id: string) => {
-    if (data.expenses.some((expense) => expense.categoryId === id)) {
+    if (latestDataRef.current.expenses.some((expense) => expense.categoryId === id)) {
       return false;
     }
 
-    setData((current) => ({
+    updateData((current) => ({
       ...current,
       categories: current.categories.filter((category) => category.id !== id),
     }));
@@ -176,11 +280,11 @@ export function useFinanceStore() {
   };
 
   const removeBucket = (id: string) => {
-    if (data.savingsEntries.some((entry) => entry.bucketId === id)) {
+    if (latestDataRef.current.savingsEntries.some((entry) => entry.bucketId === id)) {
       return false;
     }
 
-    setData((current) => ({
+    updateData((current) => ({
       ...current,
       savingsBuckets: current.savingsBuckets.filter((bucket) => bucket.id !== id),
     }));
@@ -191,7 +295,9 @@ export function useFinanceStore() {
   return {
     data,
     isReady,
-    setData,
+    syncError,
+    refreshData: loadRemoteData,
+    retrySync: () => persistRemoteData(latestDataRef.current),
     updateBalance,
     updateSalaryDay,
     addExpense,
@@ -203,4 +309,27 @@ export function useFinanceStore() {
     removeCategory,
     removeBucket,
   };
+}
+
+function getLegacyLocalData() {
+  try {
+    const storedValue = window.localStorage.getItem(STORAGE_KEY);
+    if (!storedValue) {
+      return null;
+    }
+
+    return normalizeFinanceData(JSON.parse(storedValue));
+  } catch {
+    return null;
+  }
+}
+
+function shouldMigrateLegacyData(remoteData: FinanceData) {
+  const isRemoteEmpty =
+    remoteData.currentBalance === 0 &&
+    remoteData.expenses.length === 0 &&
+    remoteData.savingsEntries.length === 0 &&
+    remoteData.updatedAt === DEFAULT_DATA.updatedAt;
+
+  return isRemoteEmpty;
 }

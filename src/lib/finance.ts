@@ -39,9 +39,11 @@ export type FinanceData = {
   savingsBuckets: SavingsBucket[];
   expenses: Expense[];
   savingsEntries: SavingsEntry[];
+  updatedAt: string;
 };
 
 export const STORAGE_KEY = "money-management-dashboard";
+export const FINANCE_DATA_KEY = "finance:data";
 
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: "groceries", name: "Groceries", color: "#22c55e", kind: "needs" },
@@ -64,6 +66,7 @@ export const DEFAULT_DATA: FinanceData = {
   savingsBuckets: DEFAULT_SAVINGS_BUCKETS,
   expenses: [],
   savingsEntries: [],
+  updatedAt: new Date(0).toISOString(),
 };
 
 export function normalizeFinanceData(input: unknown): FinanceData {
@@ -94,6 +97,17 @@ export function normalizeFinanceData(input: unknown): FinanceData {
     savingsEntries: Array.isArray(candidate.savingsEntries)
       ? candidate.savingsEntries.filter(isSavingsEntry)
       : [],
+    updatedAt:
+      typeof candidate.updatedAt === "string" && candidate.updatedAt
+        ? candidate.updatedAt
+        : new Date(0).toISOString(),
+  };
+}
+
+export function withUpdatedTimestamp(data: FinanceData): FinanceData {
+  return {
+    ...data,
+    updatedAt: new Date().toISOString(),
   };
 }
 

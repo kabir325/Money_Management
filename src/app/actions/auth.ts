@@ -1,9 +1,7 @@
 "use server";
 
-import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
-
-const AUTH_COOKIE = "mm-auth";
+import { AUTH_COOKIE, getIsAuthenticated, getPasswordFingerprint } from "@/lib/auth";
 
 export type LoginState = {
   error?: string;
@@ -47,19 +45,5 @@ export async function logout() {
 }
 
 export async function isAuthenticated() {
-  const configuredPassword = process.env.APP_PASSWORD;
-  if (!configuredPassword) {
-    return false;
-  }
-
-  const cookieStore = await cookies();
-  const authCookie = cookieStore.get(AUTH_COOKIE)?.value;
-
-  return authCookie === getPasswordFingerprint(configuredPassword);
-}
-
-function getPasswordFingerprint(password: string) {
-  return createHash("sha256")
-    .update(`${password}:money-management`)
-    .digest("hex");
+  return getIsAuthenticated();
 }

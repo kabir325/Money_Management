@@ -37,6 +37,15 @@ type ExpenseFormState = {
   note: string;
 };
 
+type CashFormState = {
+  title: string;
+  amount: string;
+  date: string;
+  note: string;
+};
+
+type QuickAddMode = "expense" | "cash";
+
 const chartGrid = "#243041";
 const chartAxis = "#94a3b8";
 const tooltipStyle = {
@@ -54,6 +63,13 @@ const defaultExpenseForm = (data: FinanceData): ExpenseFormState => ({
   note: "",
 });
 
+const defaultCashForm = (): CashFormState => ({
+  title: "",
+  amount: "",
+  date: todayInputValue(),
+  note: "",
+});
+
 export function Dashboard() {
   const {
     data,
@@ -61,13 +77,17 @@ export function Dashboard() {
     syncError,
     retrySync,
     addExpense,
+    addCashEntry,
     removeExpense,
+    removeCashEntry,
     removeSavings,
   } = useFinanceStore();
   const [isExpenseModalOpen, setExpenseModalOpen] = useState(false);
+  const [quickAddMode, setQuickAddMode] = useState<QuickAddMode>("expense");
   const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(
     defaultExpenseForm(DEFAULT_DATA),
   );
+  const [cashForm, setCashForm] = useState<CashFormState>(defaultCashForm);
 
   const categoryMap = useMemo(
     () => new Map(data.categories.map((item) => [item.id, item])),
@@ -96,6 +116,14 @@ export function Dashboard() {
         isDateInRange(entry.date, cycle.start, cycle.end),
       ),
     [cycle.end, cycle.start, data.savingsEntries],
+  );
+
+  const currentCycleCash = useMemo(
+    () =>
+      data.cashEntries.filter((entry) =>
+        isDateInRange(entry.date, cycle.start, cycle.end),
+      ),
+    [cycle.end, cycle.start, data.cashEntries],
   );
 
   const expenseByCategory = useMemo(() => {
@@ -141,8 +169,11 @@ export function Dashboard() {
       saved: data.savingsEntries
         .filter((entry) => toMonthKey(parseInputDate(entry.date)) === bucket.key)
         .reduce((sum, entry) => sum + entry.amount, 0),
+      received: data.cashEntries
+        .filter((entry) => toMonthKey(parseInputDate(entry.date)) === bucket.key)
+        .reduce((sum, entry) => sum + entry.amount, 0),
     }));
-  }, [data.expenses, data.savingsEntries]);
+  }, [data.cashEntries, data.expenses, data.savingsEntries]);
 
   const recentActivity = useMemo(() => {
     return [
@@ -162,10 +193,18 @@ export function Dashboard() {
         tag: bucketMap.get(entry.bucketId)?.name ?? "Savings",
         tone: "savings" as const,
       })),
+      ...data.cashEntries.map((entry) => ({
+        id: entry.id,
+        title: entry.title,
+        amount: entry.amount,
+        date: entry.date,
+        tag: "Cash received",
+        tone: "cash" as const,
+      })),
     ]
       .sort((left, right) => right.date.localeCompare(left.date))
       .slice(0, 8);
-  }, [bucketMap, categoryMap, data.expenses, data.savingsEntries]);
+  }, [bucketMap, categoryMap, data.cashEntries, data.expenses, data.savingsEntries]);
 
   const habitSpend = useMemo(() => {
     return currentCycleExpenses.reduce(
@@ -186,14 +225,19 @@ export function Dashboard() {
     (sum, entry) => sum + entry.amount,
     0,
   );
+  const currentCycleCashTotal = currentCycleCash.reduce(
+    (sum, entry) => sum + entry.amount,
+    0,
+  );
   const totalSavings = data.savingsEntries.reduce(
     (sum, entry) => sum + entry.amount,
     0,
   );
-  const spentAndSaved = currentCycleSpent + currentCycleSaved;
+  const totalCashReceived = data.cashEntries.reduce((sum, entry) => sum + entry.amount, 0);
+  const trackedCycleMoney = currentCycleSpent + currentCycleSaved + currentCycleCashTotal;
   const planningBase = Math.max(
-    spentAndSaved,
-    Math.max(data.currentBalance, 0) + spentAndSaved,
+    trackedCycleMoney,
+    Math.max(data.currentBalance, 0) + trackedCycleMoney,
     1,
   );
   const needsSpent = habitSpend.needs;
@@ -208,7 +252,9 @@ export function Dashboard() {
   const dailyAllowance =
     cycle.daysLeft > 0 ? Math.round(safeToSpend / cycle.daysLeft) : safeToSpend;
   const savingsRate =
-    spentAndSaved > 0 ? Math.round((currentCycleSaved / spentAndSaved) * 100) : 0;
+    trackedCycleMoney > 0
+      ? Math.round((currentCycleSaved / trackedCycleMoney) * 100)
+      : 0;
   const cycleLength = Math.max(
     1,
     Math.ceil((cycle.end.getTime() - cycle.start.getTime()) / (1000 * 60 * 60 * 24)),
@@ -245,6 +291,8 @@ export function Dashboard() {
 
   const openExpenseModal = () => {
     setExpenseForm(defaultExpenseForm(data));
+    setCashForm(defaultCashForm());
+    setQuickAddMode("expense");
     setExpenseModalOpen(true);
   };
 
@@ -265,6 +313,25 @@ export function Dashboard() {
     });
 
     setExpenseForm(defaultExpenseForm(data));
+    setExpenseModalOpen(false);
+  };
+
+  const handleAddCashEntry = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const amount = Number(cashForm.amount);
+
+    if (!cashForm.title.trim() || amount <= 0) {
+      return;
+    }
+
+    addCashEntry({
+      title: cashForm.title,
+      amount,
+      date: cashForm.date,
+      note: cashForm.note,
+    });
+
+    setCashForm(defaultCashForm());
     setExpenseModalOpen(false);
   };
 
@@ -297,62 +364,46 @@ export function Dashboard() {
             </div>
           ) : null}
 
-          <section className="rounded-[32px] border border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.22),_transparent_38%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(2,6,23,0.98))] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
-            <div className="flex flex-col gap-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-violet-300">
-                    Personal Finance
-                  </p>
-                  <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">
-                    Dark money dashboard
-                  </h1>
-                  <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
-                    Phone-first insights for expenses, savings, and healthier spending.
-                  </p>
-                </div>
+          <section className="rounded-[32px] border border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.16),_transparent_34%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(2,6,23,0.98))] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
+            <div className="flex items-center justify-between gap-4">
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-50">
+                Personal Finance
+              </h1>
 
-                <div className="flex items-center gap-2">
-                  <Link
-                    href="/settings"
-                    className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/settings"
+                  aria-label="Settings"
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                >
+                  <SettingsIcon />
+                </Link>
+                <form action={logout}>
+                  <button
+                    type="submit"
+                    aria-label="Lock"
+                    className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
                   >
-                    Settings
-                  </Link>
-                  <form action={logout}>
-                    <button
-                      type="submit"
-                      className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
-                    >
-                      Lock
-                    </button>
-                  </form>
-                </div>
-              </div>
-
-              <div className="rounded-[28px] border border-slate-800 bg-slate-900/85 p-5 text-white">
-                <div className="flex flex-col gap-3">
-                  <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">
-                    Current net balance
-                  </p>
-                  <p className="text-4xl font-semibold tracking-tight">
-                    {formatCurrency(data.currentBalance)}
-                  </p>
-                  <p className="text-sm text-slate-400">
-                    Salary cycle: {formatLongDate(cycle.start)} to {formatLongDate(cycle.end)}
-                  </p>
-                </div>
+                    <LockIcon />
+                  </button>
+                </form>
               </div>
             </div>
-          </section>
 
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <StatCard label="Cycle spend" value={formatCurrency(currentCycleSpent)} />
-            <StatCard label="Cycle saved" value={formatCurrency(currentCycleSaved)} />
-            <StatCard label="Savings rate" value={`${savingsRate}%`} />
-            <StatCard label="Days to salary" value={`${cycle.daysLeft}`} />
-            <StatCard label="Projected spend" value={formatCurrency(projectedSpend)} />
-            <StatCard label="Top category" value={topCategory} />
+            <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+              <StatCard label="Balance" value={formatCurrency(data.currentBalance)} />
+              <StatCard label="Cycle spend" value={formatCurrency(currentCycleSpent)} />
+              <StatCard label="Cycle saved" value={formatCurrency(currentCycleSaved)} />
+              <StatCard label="Cash in" value={formatCurrency(currentCycleCashTotal)} />
+              <StatCard label="Savings rate" value={`${savingsRate}%`} />
+              <StatCard label="Days to salary" value={`${cycle.daysLeft}`} />
+              <StatCard label="Projected spend" value={formatCurrency(projectedSpend)} />
+              <StatCard label="Top category" value={topCategory} />
+            </div>
+
+            <p className="mt-4 text-sm text-slate-500">
+              Salary cycle: {formatLongDate(cycle.start)} to {formatLongDate(cycle.end)}
+            </p>
           </section>
 
           <section className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
@@ -450,6 +501,12 @@ export function Dashboard() {
                     <Legend wrapperStyle={{ color: "#cbd5e1" }} />
                     <Bar dataKey="spent" name="Spent" fill="#8b5cf6" radius={[10, 10, 0, 0]} />
                     <Bar dataKey="saved" name="Saved" fill="#14b8a6" radius={[10, 10, 0, 0]} />
+                    <Bar
+                      dataKey="received"
+                      name="Cash In"
+                      fill="#38bdf8"
+                      radius={[10, 10, 0, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -471,7 +528,11 @@ export function Dashboard() {
                       </div>
                       <p
                         className={`text-sm font-semibold ${
-                          item.tone === "expense" ? "text-rose-400" : "text-emerald-400"
+                          item.tone === "expense"
+                            ? "text-rose-400"
+                            : item.tone === "cash"
+                              ? "text-sky-400"
+                              : "text-emerald-400"
                         }`}
                       >
                         {item.tone === "expense" ? "-" : "+"}
@@ -497,8 +558,15 @@ export function Dashboard() {
                   label="Total tracked savings"
                   value={formatCurrency(totalSavings)}
                 />
+                <MiniInsight
+                  label="Cash gifts tracked"
+                  value={formatCurrency(totalCashReceived)}
+                />
                 <MiniInsight label="Expense entries" value={`${data.expenses.length}`} />
-                <MiniInsight label="Savings entries" value={`${data.savingsEntries.length}`} />
+                <MiniInsight
+                  label="Savings entries"
+                  value={`${data.savingsEntries.length}`}
+                />
               </div>
             </Surface>
 
@@ -586,7 +654,7 @@ export function Dashboard() {
             </Surface>
           </section>
 
-          <section className="grid gap-5 xl:grid-cols-1">
+          <section className="grid gap-5 xl:grid-cols-2">
             <Surface title="Savings log" description="Latest contributions">
               <div className="space-y-3">
                 {data.savingsEntries.length ? (
@@ -605,6 +673,25 @@ export function Dashboard() {
                 )}
               </div>
             </Surface>
+
+            <Surface title="Cash received log" description="Money you received outside salary">
+              <div className="space-y-3">
+                {data.cashEntries.length ? (
+                  data.cashEntries.map((entry) => (
+                    <LedgerRow
+                      key={entry.id}
+                      title={entry.title}
+                      subtitle={`Cash received • ${formatShortDate(entry.date)}`}
+                      amount={`+${formatCurrency(entry.amount)}`}
+                      amountClassName="text-sky-400"
+                      onDelete={() => removeCashEntry(entry.id)}
+                    />
+                  ))
+                ) : (
+                  <EmptyState text="No extra cash received entries added yet." />
+                )}
+              </div>
+            </Surface>
           </section>
         </div>
       </div>
@@ -613,7 +700,7 @@ export function Dashboard() {
         type="button"
         onClick={openExpenseModal}
         className="fixed bottom-5 right-5 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-violet-600 text-4xl font-light text-white shadow-[0_20px_50px_rgba(124,58,237,0.45)] transition hover:scale-[1.02] hover:bg-violet-500"
-        aria-label="Add expense"
+        aria-label="Add transaction"
       >
         +
       </button>
@@ -627,10 +714,12 @@ export function Dashboard() {
                   Quick Add
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold text-slate-50">
-                  Add expenditure
+                  {quickAddMode === "expense" ? "Add expenditure" : "Add cash received"}
                 </h2>
                 <p className="mt-2 text-sm text-slate-400">
-                  Use the floating action button any time you spend money.
+                  {quickAddMode === "expense"
+                    ? "Use the floating action button any time you spend money."
+                    : "Track money you received from relatives, gifts, or any extra cash."}
                 </p>
               </div>
               <button
@@ -642,72 +731,146 @@ export function Dashboard() {
               </button>
             </div>
 
-            <form onSubmit={handleAddExpense} className="mt-6 space-y-4">
-              <Input
-                label="Expense title"
-                value={expenseForm.title}
-                onChange={(value) =>
-                  setExpenseForm((current) => ({ ...current, title: value }))
-                }
-                placeholder="Groceries, rent, fuel..."
-              />
+            <div className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-slate-800 bg-slate-900 p-1">
+              <button
+                type="button"
+                onClick={() => setQuickAddMode("expense")}
+                className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                  quickAddMode === "expense"
+                    ? "bg-violet-600 text-white"
+                    : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                Expense
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickAddMode("cash")}
+                className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                  quickAddMode === "cash"
+                    ? "bg-sky-600 text-white"
+                    : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                Cash received
+              </button>
+            </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+            {quickAddMode === "expense" ? (
+              <form onSubmit={handleAddExpense} className="mt-6 space-y-4">
                 <Input
-                  label="Amount"
-                  type="number"
-                  value={expenseForm.amount}
+                  label="Expense title"
+                  value={expenseForm.title}
                   onChange={(value) =>
-                    setExpenseForm((current) => ({ ...current, amount: value }))
+                    setExpenseForm((current) => ({ ...current, title: value }))
                   }
-                  placeholder="0"
+                  placeholder="Groceries, rent, fuel..."
                 />
-                <Field label="Category">
-                  <select
-                    value={expenseForm.categoryId}
-                    onChange={(event) =>
-                      setExpenseForm((current) => ({
-                        ...current,
-                        categoryId: event.target.value,
-                      }))
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input
+                    label="Amount"
+                    type="number"
+                    value={expenseForm.amount}
+                    onChange={(value) =>
+                      setExpenseForm((current) => ({ ...current, amount: value }))
                     }
-                    className={fieldClassName}
-                  >
-                    {data.categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
+                    placeholder="0"
+                  />
+                  <Field label="Category">
+                    <select
+                      value={expenseForm.categoryId}
+                      onChange={(event) =>
+                        setExpenseForm((current) => ({
+                          ...current,
+                          categoryId: event.target.value,
+                        }))
+                      }
+                      className={fieldClassName}
+                    >
+                      {data.categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input
+                    label="Date"
+                    type="date"
+                    value={expenseForm.date}
+                    onChange={(value) =>
+                      setExpenseForm((current) => ({ ...current, date: value }))
+                    }
+                  />
+                  <Input
+                    label="Note"
+                    value={expenseForm.note}
+                    onChange={(value) =>
+                      setExpenseForm((current) => ({ ...current, note: value }))
+                    }
+                    placeholder="Optional detail"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
+                >
+                  Save expense
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleAddCashEntry} className="mt-6 space-y-4">
                 <Input
-                  label="Date"
-                  type="date"
-                  value={expenseForm.date}
+                  label="Cash source"
+                  value={cashForm.title}
                   onChange={(value) =>
-                    setExpenseForm((current) => ({ ...current, date: value }))
+                    setCashForm((current) => ({ ...current, title: value }))
                   }
+                  placeholder="From uncle, gift, cash help..."
                 />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input
+                    label="Amount"
+                    type="number"
+                    value={cashForm.amount}
+                    onChange={(value) =>
+                      setCashForm((current) => ({ ...current, amount: value }))
+                    }
+                    placeholder="0"
+                  />
+                  <Input
+                    label="Date"
+                    type="date"
+                    value={cashForm.date}
+                    onChange={(value) =>
+                      setCashForm((current) => ({ ...current, date: value }))
+                    }
+                  />
+                </div>
+
                 <Input
                   label="Note"
-                  value={expenseForm.note}
+                  value={cashForm.note}
                   onChange={(value) =>
-                    setExpenseForm((current) => ({ ...current, note: value }))
+                    setCashForm((current) => ({ ...current, note: value }))
                   }
                   placeholder="Optional detail"
                 />
-              </div>
 
-              <button
-                type="submit"
-                className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
-              >
-                Save expense
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  className="w-full rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
+                >
+                  Save cash received
+                </button>
+              </form>
+            )}
           </div>
         </div>
       ) : null}
@@ -875,6 +1038,43 @@ function EmptyState({ text }: { text: string }) {
     <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900 px-4 py-8 text-center text-sm leading-6 text-slate-500">
       {text}
     </div>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="3.25" />
+      <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 0 1 0 2.8 2 2 0 0 1-2.8 0l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 0 1-4 0v-.2a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 0 1 0-4h.2a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V4a2 2 0 0 1 4 0v.2a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6H20a2 2 0 0 1 0 4h-.2a1 1 0 0 0-.9.6Z" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="5" y="11" width="14" height="10" rx="2.5" />
+      <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+      <circle cx="12" cy="16" r="1" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
 

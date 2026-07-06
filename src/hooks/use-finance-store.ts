@@ -27,6 +27,13 @@ type AddSavingsInput = {
   note?: string;
 };
 
+type AddCashEntryInput = {
+  title: string;
+  amount: number;
+  date: string;
+  note?: string;
+};
+
 type AddCategoryInput = {
   name: string;
   color: string;
@@ -221,6 +228,22 @@ export function useFinanceStore() {
     }));
   };
 
+  const addCashEntry = (input: AddCashEntryInput) => {
+    updateData((current) => ({
+      ...current,
+      cashEntries: [
+        {
+          id: crypto.randomUUID(),
+          title: input.title.trim(),
+          amount: input.amount,
+          date: input.date,
+          note: input.note?.trim() ?? "",
+        },
+        ...current.cashEntries,
+      ],
+    }));
+  };
+
   const addCategory = (input: AddCategoryInput) => {
     const category = {
       id: `${input.name.toLowerCase().replace(/\s+/g, "-")}-${crypto.randomUUID().slice(0, 6)}`,
@@ -266,6 +289,13 @@ export function useFinanceStore() {
     }));
   };
 
+  const removeCashEntry = (id: string) => {
+    updateData((current) => ({
+      ...current,
+      cashEntries: current.cashEntries.filter((entry) => entry.id !== id),
+    }));
+  };
+
   const removeCategory = (id: string) => {
     if (latestDataRef.current.expenses.some((expense) => expense.categoryId === id)) {
       return false;
@@ -302,10 +332,12 @@ export function useFinanceStore() {
     updateSalaryDay,
     addExpense,
     addSavings,
+    addCashEntry,
     addCategory,
     addBucket,
     removeExpense,
     removeSavings,
+    removeCashEntry,
     removeCategory,
     removeBucket,
   };
@@ -329,6 +361,7 @@ function shouldMigrateLegacyData(remoteData: FinanceData) {
     remoteData.currentBalance === 0 &&
     remoteData.expenses.length === 0 &&
     remoteData.savingsEntries.length === 0 &&
+    remoteData.cashEntries.length === 0 &&
     remoteData.updatedAt === DEFAULT_DATA.updatedAt;
 
   return isRemoteEmpty;

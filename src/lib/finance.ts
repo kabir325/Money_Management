@@ -32,6 +32,14 @@ export type SavingsEntry = {
   note?: string;
 };
 
+export type CashEntry = {
+  id: string;
+  title: string;
+  amount: number;
+  date: string;
+  note?: string;
+};
+
 export type FinanceData = {
   currentBalance: number;
   salaryDay: SalaryDay;
@@ -39,6 +47,7 @@ export type FinanceData = {
   savingsBuckets: SavingsBucket[];
   expenses: Expense[];
   savingsEntries: SavingsEntry[];
+  cashEntries: CashEntry[];
   updatedAt: string;
 };
 
@@ -66,6 +75,7 @@ export const DEFAULT_DATA: FinanceData = {
   savingsBuckets: DEFAULT_SAVINGS_BUCKETS,
   expenses: [],
   savingsEntries: [],
+  cashEntries: [],
   updatedAt: new Date(0).toISOString(),
 };
 
@@ -96,6 +106,9 @@ export function normalizeFinanceData(input: unknown): FinanceData {
       : [],
     savingsEntries: Array.isArray(candidate.savingsEntries)
       ? candidate.savingsEntries.filter(isSavingsEntry)
+      : [],
+    cashEntries: Array.isArray(candidate.cashEntries)
+      ? candidate.cashEntries.filter(isCashEntry)
       : [],
     updatedAt:
       typeof candidate.updatedAt === "string" && candidate.updatedAt
@@ -256,6 +269,17 @@ function isSavingsEntry(value: unknown): value is SavingsEntry {
       "title" in value &&
       "amount" in value &&
       "bucketId" in value &&
+      "date" in value,
+  );
+}
+
+function isCashEntry(value: unknown): value is CashEntry {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "id" in value &&
+      "title" in value &&
+      "amount" in value &&
       "date" in value,
   );
 }

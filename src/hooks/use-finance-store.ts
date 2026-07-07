@@ -197,6 +197,7 @@ export function useFinanceStore() {
   const addExpense = (input: AddExpenseInput) => {
     updateData((current) => ({
       ...current,
+      currentBalance: current.currentBalance - input.amount,
       expenses: [
         {
           id: crypto.randomUUID(),
@@ -214,6 +215,7 @@ export function useFinanceStore() {
   const addSavings = (input: AddSavingsInput) => {
     updateData((current) => ({
       ...current,
+      currentBalance: current.currentBalance - input.amount,
       savingsEntries: [
         {
           id: crypto.randomUUID(),
@@ -231,6 +233,7 @@ export function useFinanceStore() {
   const addCashEntry = (input: AddCashEntryInput) => {
     updateData((current) => ({
       ...current,
+      currentBalance: current.currentBalance + input.amount,
       cashEntries: [
         {
           id: crypto.randomUUID(),
@@ -276,24 +279,39 @@ export function useFinanceStore() {
   };
 
   const removeExpense = (id: string) => {
-    updateData((current) => ({
-      ...current,
-      expenses: current.expenses.filter((expense) => expense.id !== id),
-    }));
+    updateData((current) => {
+      const removedExpense = current.expenses.find((expense) => expense.id === id);
+
+      return {
+        ...current,
+        currentBalance: current.currentBalance + (removedExpense?.amount ?? 0),
+        expenses: current.expenses.filter((expense) => expense.id !== id),
+      };
+    });
   };
 
   const removeSavings = (id: string) => {
-    updateData((current) => ({
-      ...current,
-      savingsEntries: current.savingsEntries.filter((entry) => entry.id !== id),
-    }));
+    updateData((current) => {
+      const removedSavings = current.savingsEntries.find((entry) => entry.id === id);
+
+      return {
+        ...current,
+        currentBalance: current.currentBalance + (removedSavings?.amount ?? 0),
+        savingsEntries: current.savingsEntries.filter((entry) => entry.id !== id),
+      };
+    });
   };
 
   const removeCashEntry = (id: string) => {
-    updateData((current) => ({
-      ...current,
-      cashEntries: current.cashEntries.filter((entry) => entry.id !== id),
-    }));
+    updateData((current) => {
+      const removedCashEntry = current.cashEntries.find((entry) => entry.id === id);
+
+      return {
+        ...current,
+        currentBalance: current.currentBalance - (removedCashEntry?.amount ?? 0),
+        cashEntries: current.cashEntries.filter((entry) => entry.id !== id),
+      };
+    });
   };
 
   const removeCategory = (id: string) => {

@@ -1,5 +1,7 @@
-export type SalaryDay = 25 | 26;
+export type SalaryDay = number;
 export type SpendingType = "needs" | "wants";
+export type BalanceSource = "bank" | "cash";
+export type EmergencyFundProfile = "secure" | "family" | "freelancer";
 
 export type Category = {
   id: string;
@@ -19,6 +21,7 @@ export type Expense = {
   title: string;
   amount: number;
   categoryId: string;
+  account: BalanceSource;
   date: string;
   note?: string;
 };
@@ -28,6 +31,7 @@ export type SavingsEntry = {
   title: string;
   amount: number;
   bucketId: string;
+  account: BalanceSource;
   date: string;
   note?: string;
 };
@@ -36,18 +40,45 @@ export type CashEntry = {
   id: string;
   title: string;
   amount: number;
+  account: BalanceSource;
   date: string;
   note?: string;
 };
 
+export type LoanPayment = {
+  id: string;
+  amount: number;
+  account: BalanceSource;
+  date: string;
+  note?: string;
+};
+
+export type Loan = {
+  id: string;
+  title: string;
+  lender: string;
+  principalAmount: number;
+  monthlyPayment: number;
+  totalMonths: number;
+  dueDay: number;
+  startDate: string;
+  note?: string;
+  payments: LoanPayment[];
+};
+
 export type FinanceData = {
   currentBalance: number;
+  bankBalance: number;
+  cashBalance: number;
   salaryDay: SalaryDay;
+  salaryAmount: number;
+  emergencyFundProfile: EmergencyFundProfile;
   categories: Category[];
   savingsBuckets: SavingsBucket[];
   expenses: Expense[];
   savingsEntries: SavingsEntry[];
   cashEntries: CashEntry[];
+  loans: Loan[];
   updatedAt: string;
 };
 
@@ -70,12 +101,17 @@ export const DEFAULT_SAVINGS_BUCKETS: SavingsBucket[] = [
 
 export const DEFAULT_DATA: FinanceData = {
   currentBalance: 0,
+  bankBalance: 0,
+  cashBalance: 0,
   salaryDay: 25,
+  salaryAmount: 0,
+  emergencyFundProfile: "secure",
   categories: DEFAULT_CATEGORIES,
   savingsBuckets: DEFAULT_SAVINGS_BUCKETS,
   expenses: [],
   savingsEntries: [],
   cashEntries: [],
+  loans: [],
   updatedAt: new Date(0).toISOString(),
 };
 
@@ -84,31 +120,48 @@ export function normalizeFinanceData(input: unknown): FinanceData {
     return DEFAULT_DATA;
   }
 
-  const candidate = input as Partial<FinanceData>;
+  const candidate = input as Partial<FinanceData> & {
+    currentBalance?: number;
+  };
+  const bankBalance = normalizeNumber(candidate.bankBalance, candidate.currentBalance ?? 0);
+  const cashBalance = normalizeNumber(candidate.cashBalance, 0);
 
   return {
-    currentBalance:
-      typeof candidate.currentBalance === "number" &&
-      Number.isFinite(candidate.currentBalance)
-        ? candidate.currentBalance
-        : 0,
-    salaryDay: candidate.salaryDay === 26 ? 26 : 25,
+    currentBalance: bankBalance + cashBalance,
+    bankBalance,
+    cashBalance,
+    salaryDay: clampDay(candidate.salaryDay),
+    salaryAmount: normalizeNumber(candidate.salaryAmount, 0),
+    emergencyFundProfile: normalizeEmergencyFundProfile(candidate.emergencyFundProfile),
     categories: Array.isArray(candidate.categories)
       ? candidate.categories
           .map((category) => normalizeCategory(category))
           .filter((category): category is Category => category !== null)
       : DEFAULT_CATEGORIES,
     savingsBuckets: Array.isArray(candidate.savingsBuckets)
-      ? candidate.savingsBuckets.filter(isSavingsBucket)
+      ? candidate.savingsBuckets
+          .map((bucket) => normalizeSavingsBucket(bucket))
+          .filter((bucket): bucket is SavingsBucket => bucket !== null)
       : DEFAULT_SAVINGS_BUCKETS,
     expenses: Array.isArray(candidate.expenses)
-      ? candidate.expenses.filter(isExpense)
+      ? candidate.expenses
+          .map((expense) => normalizeExpense(expense))
+          .filter((expense): expense is Expense => expense !== null)
       : [],
     savingsEntries: Array.isArray(candidate.savingsEntries)
-      ? candidate.savingsEntries.filter(isSavingsEntry)
+      ? candidate.savingsEntries
+          .map((entry) => normalizeSavingsEntry(entry))
+          .filter((entry): entry is SavingsEntry => entry !== null)
       : [],
     cashEntries: Array.isArray(candidate.cashEntries)
-      ? candidate.cashEntries.filter(isCashEntry)
+      ? candidate.cashEntries
+          .map((entry) => normalizeCashEntry(entry))
+          .filter((entry): entry is CashEntry => entry !== null)
+      : [],
+    loans: Array.isArray(candidate.loans)
+      ? candidate.loans
+          .map((loan) => normalizeLoan(loan))
+          .filter((loan): loan is Loan => loan !== null)
       : [],
     updatedAt:
       typeof candidate.updatedAt === "string" && candidate.updatedAt
@@ -119,7 +172,7 @@ export function normalizeFinanceData(input: unknown): FinanceData {
 
 export function withUpdatedTimestamp(data: FinanceData): FinanceData {
   return {
-    ...data,
+    ...normalizeFinanceData(data),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -147,13 +200,55 @@ export function formatLongDate(value: Date) {
   });
 }
 
+export function getAccountLabel(account: BalanceSource) {
+  return account === "cash" ? "Cash" : "Bank";
+}
+
+export function getEmergencyFundMonths(profile: EmergencyFundProfile) {
+  if (profile === "family") {
+    return 6;
+  }
+
+  if (profile === "freelancer") {
+    return 9;
+  }
+
+  return 3;
+}
+
+export function getEmergencyProfileLabel(profile: EmergencyFundProfile) {
+  if (profile === "family") {
+    return "6-month cover";
+  }
+
+  if (profile === "freelancer") {
+    return "9-month cover";
+  }
+
+  return "3-month cover";
+}
+
+export function getEmergencyProfileDescription(profile: EmergencyFundProfile) {
+  if (profile === "family") {
+    return "Families, couples with shared responsibilities, dependents, or loans.";
+  }
+
+  if (profile === "freelancer") {
+    return "Freelancers, self-employed people, or volatile-income work.";
+  }
+
+  return "Single or dual-income households with secure and stable jobs.";
+}
+
 export function getSalaryCycleRange(referenceDate: Date, salaryDay: SalaryDay) {
   const today = atMidday(referenceDate);
+  const safeDay = clampDay(salaryDay);
+  const currentMonthSalaryDate = createMonthDay(today.getFullYear(), today.getMonth(), safeDay);
   const start =
-    today.getDate() >= salaryDay
-      ? new Date(today.getFullYear(), today.getMonth(), salaryDay, 12)
-      : new Date(today.getFullYear(), today.getMonth() - 1, salaryDay, 12);
-  const end = new Date(start.getFullYear(), start.getMonth() + 1, salaryDay, 12);
+    today.getTime() >= currentMonthSalaryDate.getTime()
+      ? currentMonthSalaryDate
+      : createMonthDay(today.getFullYear(), today.getMonth() - 1, safeDay);
+  const end = createMonthDay(start.getFullYear(), start.getMonth() + 1, safeDay);
   const daysLeft = Math.max(
     0,
     Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
@@ -206,8 +301,20 @@ export function toMonthKey(date: Date) {
   return `${year}-${month}`;
 }
 
+export function toYearKey(date: Date) {
+  return `${date.getFullYear()}`;
+}
+
 function atMidday(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12);
+}
+
+function createMonthDay(year: number, monthIndex: number, day: number) {
+  const safeYear = monthIndex < 0 ? year + Math.floor(monthIndex / 12) : year;
+  const normalizedMonth = ((monthIndex % 12) + 12) % 12;
+  const adjustedYear = monthIndex >= 0 ? year + Math.floor(monthIndex / 12) : safeYear;
+  const lastDay = new Date(adjustedYear, normalizedMonth + 1, 0).getDate();
+  return new Date(adjustedYear, normalizedMonth, Math.min(day, lastDay), 12);
 }
 
 function normalizeCategory(value: unknown): Category | null {
@@ -231,14 +338,179 @@ function normalizeCategory(value: unknown): Category | null {
   };
 }
 
-function isSavingsBucket(value: unknown): value is SavingsBucket {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      "id" in value &&
-      "name" in value &&
-      "color" in value,
-  );
+function normalizeSavingsBucket(value: unknown): SavingsBucket | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("id" in value) ||
+    !("name" in value) ||
+    !("color" in value)
+  ) {
+    return null;
+  }
+
+  const candidate = value as Partial<SavingsBucket>;
+
+  return {
+    id: String(candidate.id),
+    name: String(candidate.name),
+    color: String(candidate.color),
+  };
+}
+
+function normalizeExpense(value: unknown): Expense | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("id" in value) ||
+    !("title" in value) ||
+    !("amount" in value) ||
+    !("categoryId" in value) ||
+    !("date" in value)
+  ) {
+    return null;
+  }
+
+  const candidate = value as Partial<Expense>;
+
+  return {
+    id: String(candidate.id),
+    title: String(candidate.title),
+    amount: normalizeNumber(candidate.amount, 0),
+    categoryId: String(candidate.categoryId),
+    account: normalizeBalanceSource(candidate.account),
+    date: String(candidate.date),
+    note: typeof candidate.note === "string" ? candidate.note : "",
+  };
+}
+
+function normalizeSavingsEntry(value: unknown): SavingsEntry | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("id" in value) ||
+    !("title" in value) ||
+    !("amount" in value) ||
+    !("bucketId" in value) ||
+    !("date" in value)
+  ) {
+    return null;
+  }
+
+  const candidate = value as Partial<SavingsEntry>;
+
+  return {
+    id: String(candidate.id),
+    title: String(candidate.title),
+    amount: normalizeNumber(candidate.amount, 0),
+    bucketId: String(candidate.bucketId),
+    account: normalizeBalanceSource(candidate.account),
+    date: String(candidate.date),
+    note: typeof candidate.note === "string" ? candidate.note : "",
+  };
+}
+
+function normalizeCashEntry(value: unknown): CashEntry | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("id" in value) ||
+    !("title" in value) ||
+    !("amount" in value) ||
+    !("date" in value)
+  ) {
+    return null;
+  }
+
+  const candidate = value as Partial<CashEntry>;
+
+  return {
+    id: String(candidate.id),
+    title: String(candidate.title),
+    amount: normalizeNumber(candidate.amount, 0),
+    account: normalizeBalanceSource(candidate.account),
+    date: String(candidate.date),
+    note: typeof candidate.note === "string" ? candidate.note : "",
+  };
+}
+
+function normalizeLoan(value: unknown): Loan | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("id" in value) ||
+    !("title" in value) ||
+    !("principalAmount" in value) ||
+    !("monthlyPayment" in value) ||
+    !("totalMonths" in value) ||
+    !("dueDay" in value) ||
+    !("startDate" in value)
+  ) {
+    return null;
+  }
+
+  const candidate = value as Partial<Loan>;
+
+  return {
+    id: String(candidate.id),
+    title: String(candidate.title),
+    lender: typeof candidate.lender === "string" ? candidate.lender : "",
+    principalAmount: normalizeNumber(candidate.principalAmount, 0),
+    monthlyPayment: normalizeNumber(candidate.monthlyPayment, 0),
+    totalMonths: Math.max(1, Math.round(normalizeNumber(candidate.totalMonths, 1))),
+    dueDay: clampDay(candidate.dueDay),
+    startDate: String(candidate.startDate),
+    note: typeof candidate.note === "string" ? candidate.note : "",
+    payments: Array.isArray(candidate.payments)
+      ? candidate.payments
+          .map((payment) => normalizeLoanPayment(payment))
+          .filter((payment): payment is LoanPayment => payment !== null)
+      : [],
+  };
+}
+
+function normalizeLoanPayment(value: unknown): LoanPayment | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("id" in value) ||
+    !("amount" in value) ||
+    !("date" in value)
+  ) {
+    return null;
+  }
+
+  const candidate = value as Partial<LoanPayment>;
+
+  return {
+    id: String(candidate.id),
+    amount: normalizeNumber(candidate.amount, 0),
+    account: normalizeBalanceSource(candidate.account),
+    date: String(candidate.date),
+    note: typeof candidate.note === "string" ? candidate.note : "",
+  };
+}
+
+function normalizeEmergencyFundProfile(value: unknown): EmergencyFundProfile {
+  if (value === "family" || value === "freelancer") {
+    return value;
+  }
+
+  return "secure";
+}
+
+function normalizeBalanceSource(value: unknown): BalanceSource {
+  return value === "cash" ? "cash" : "bank";
+}
+
+function normalizeNumber(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function clampDay(value: unknown) {
+  const day =
+    typeof value === "number" && Number.isFinite(value) ? Math.round(value) : DEFAULT_DATA.salaryDay;
+  return Math.min(31, Math.max(1, day));
 }
 
 function inferCategoryKind(value: string): SpendingType {
@@ -247,39 +519,4 @@ function inferCategoryKind(value: string): SpendingType {
   )
     ? "wants"
     : "needs";
-}
-
-function isExpense(value: unknown): value is Expense {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      "id" in value &&
-      "title" in value &&
-      "amount" in value &&
-      "categoryId" in value &&
-      "date" in value,
-  );
-}
-
-function isSavingsEntry(value: unknown): value is SavingsEntry {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      "id" in value &&
-      "title" in value &&
-      "amount" in value &&
-      "bucketId" in value &&
-      "date" in value,
-  );
-}
-
-function isCashEntry(value: unknown): value is CashEntry {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      "id" in value &&
-      "title" in value &&
-      "amount" in value &&
-      "date" in value,
-  );
 }

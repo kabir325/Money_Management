@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Money Management Dashboard",
+  title: "Personal Finance",
   description:
-    "A mobile-first password protected dashboard for tracking expenses, savings, balance, and salary-cycle analytics.",
+    "A mobile-first password protected personal finance dashboard for tracking balances, expenses, savings, salary cycles, and loan progress.",
 };
 
 export default function RootLayout({

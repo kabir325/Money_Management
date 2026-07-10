@@ -3,16 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { logout } from "@/app/actions/auth";
-import { todayInputValue, type SpendingType } from "@/lib/finance";
+import {
+  formatCurrency,
+  getEmergencyProfileDescription,
+  getEmergencyProfileLabel,
+  type EmergencyFundProfile,
+  type SpendingType,
+} from "@/lib/finance";
 import { useFinanceStore } from "@/hooks/use-finance-store";
-
-type SavingsFormState = {
-  title: string;
-  amount: string;
-  bucketId: string;
-  date: string;
-  note: string;
-};
 
 type CategoryFormState = {
   name: string;
@@ -31,23 +29,20 @@ export function SettingsPanel() {
     isReady,
     syncError,
     retrySync,
-    updateBalance,
+    updateBalances,
     updateSalaryDay,
-    addSavings,
+    updateSalaryAmount,
+    updateEmergencyFundProfile,
     addCategory,
     addBucket,
     removeCategory,
     removeBucket,
   } = useFinanceStore();
-  const [balanceInput, setBalanceInput] = useState("0");
-  const [salaryDayInput, setSalaryDayInput] = useState<25 | 26>(25);
-  const [savingsForm, setSavingsForm] = useState<SavingsFormState>({
-    title: "",
-    amount: "",
-    bucketId: "",
-    date: todayInputValue(),
-    note: "",
-  });
+  const [bankBalanceInput, setBankBalanceInput] = useState("0");
+  const [cashBalanceInput, setCashBalanceInput] = useState("0");
+  const [salaryAmountInput, setSalaryAmountInput] = useState("0");
+  const [salaryDayInput, setSalaryDayInput] = useState("25");
+  const [profileInput, setProfileInput] = useState<EmergencyFundProfile>("secure");
   const [categoryForm, setCategoryForm] = useState<CategoryFormState>({
     name: "",
     color: "#8b5cf6",
@@ -64,49 +59,29 @@ export function SettingsPanel() {
     }
 
     const frame = window.requestAnimationFrame(() => {
-      setBalanceInput(data.currentBalance.toString());
-      setSalaryDayInput(data.salaryDay);
-      setSavingsForm((current) => ({
-        ...current,
-        bucketId:
-          data.savingsBuckets.some((bucket) => bucket.id === current.bucketId)
-            ? current.bucketId
-            : (data.savingsBuckets[0]?.id ?? ""),
-      }));
+      setBankBalanceInput(data.bankBalance.toString());
+      setCashBalanceInput(data.cashBalance.toString());
+      setSalaryAmountInput(data.salaryAmount.toString());
+      setSalaryDayInput(data.salaryDay.toString());
+      setProfileInput(data.emergencyFundProfile);
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [data.currentBalance, data.salaryDay, data.savingsBuckets, isReady]);
+  }, [
+    data.bankBalance,
+    data.cashBalance,
+    data.emergencyFundProfile,
+    data.salaryAmount,
+    data.salaryDay,
+    isReady,
+  ]);
 
   const handleAccountSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    updateBalance(Number(balanceInput));
-    updateSalaryDay(salaryDayInput);
-  };
-
-  const handleSavingsSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const amount = Number(savingsForm.amount);
-
-    if (!savingsForm.bucketId || !savingsForm.title.trim() || amount <= 0) {
-      return;
-    }
-
-    addSavings({
-      title: savingsForm.title,
-      amount,
-      bucketId: savingsForm.bucketId,
-      date: savingsForm.date,
-      note: savingsForm.note,
-    });
-
-    setSavingsForm((current) => ({
-      ...current,
-      title: "",
-      amount: "",
-      date: todayInputValue(),
-      note: "",
-    }));
+    updateBalances(Number(bankBalanceInput), Number(cashBalanceInput));
+    updateSalaryAmount(Number(salaryAmountInput));
+    updateSalaryDay(Number(salaryDayInput));
+    updateEmergencyFundProfile(profileInput);
   };
 
   const handleCategorySubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -132,13 +107,12 @@ export function SettingsPanel() {
       return;
     }
 
-    const bucket = addBucket({
+    addBucket({
       name,
       color: bucketForm.color,
     });
 
     setBucketForm((current) => ({ ...current, name: "" }));
-    setSavingsForm((current) => ({ ...current, bucketId: bucket.id }));
   };
 
   const handleCategoryDelete = (id: string) => {
@@ -185,15 +159,12 @@ export function SettingsPanel() {
           <div className="flex flex-col gap-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-300">
+                <h1 className="text-3xl font-semibold tracking-tight text-slate-50">
                   Settings
-                </p>
-                <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">
-                  Control your money setup
                 </h1>
                 <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
-                  Manage balance, salary day, savings entries, categories, and savings buckets
-                  from one dark screen.
+                  Set your bank and cash balances, salary details, emergency profile, and
+                  finance categories.
                 </p>
               </div>
 
@@ -203,6 +174,12 @@ export function SettingsPanel() {
                   className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
                 >
                   Back
+                </Link>
+                <Link
+                  href="/savings"
+                  className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                >
+                  Savings
                 </Link>
                 <form action={logout}>
                   <button
@@ -215,113 +192,101 @@ export function SettingsPanel() {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <SummaryCard label="Current balance" value={balanceInput} />
-              <SummaryCard label="Salary day" value={`${salaryDayInput}th`} />
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <SummaryCard label="Total balance" value={formatCurrency(data.currentBalance)} />
+              <SummaryCard label="Bank" value={formatCurrency(data.bankBalance)} />
+              <SummaryCard label="Cash" value={formatCurrency(data.cashBalance)} />
+              <SummaryCard label="Salary" value={formatCurrency(data.salaryAmount)} />
             </div>
           </div>
         </section>
 
         <section className="grid gap-5 xl:grid-cols-2">
-          <Surface title="Account details" description="Move all personal money settings here">
+          <Surface title="Account details" description="Set the actual money you have right now">
             <form onSubmit={handleAccountSubmit} className="space-y-4">
-              <Input
-                label="Current account balance"
-                type="number"
-                value={balanceInput}
-                onChange={setBalanceInput}
-                placeholder="0"
-              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label="Bank balance"
+                  type="number"
+                  value={bankBalanceInput}
+                  onChange={setBankBalanceInput}
+                  placeholder="0"
+                />
+                <Input
+                  label="Cash balance"
+                  type="number"
+                  value={cashBalanceInput}
+                  onChange={setCashBalanceInput}
+                  placeholder="0"
+                />
+              </div>
 
-              <Field label="Salary usually arrives on">
-                <select
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label="Monthly salary amount"
+                  type="number"
+                  value={salaryAmountInput}
+                  onChange={setSalaryAmountInput}
+                  placeholder="0"
+                />
+                <Input
+                  label="Salary date"
+                  type="number"
                   value={salaryDayInput}
+                  onChange={setSalaryDayInput}
+                  placeholder="25"
+                />
+              </div>
+
+              <Field label="Which type of individual are you?">
+                <select
+                  value={profileInput}
                   onChange={(event) =>
-                    setSalaryDayInput(Number(event.target.value) === 26 ? 26 : 25)
+                    setProfileInput(
+                      event.target.value === "family"
+                        ? "family"
+                        : event.target.value === "freelancer"
+                          ? "freelancer"
+                          : "secure",
+                    )
                   }
                   className={fieldClassName}
                 >
-                  <option value={25}>25th</option>
-                  <option value={26}>26th</option>
+                  <option value="secure">3 months: secure / stable income</option>
+                  <option value="family">6 months: family / dependents / loans</option>
+                  <option value="freelancer">9 months: freelancer / volatile income</option>
                 </select>
               </Field>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-4 text-sm leading-6 text-slate-300">
+                <p className="font-medium text-slate-100">{getEmergencyProfileLabel(profileInput)}</p>
+                <p className="mt-1 text-slate-400">
+                  {getEmergencyProfileDescription(profileInput)}
+                </p>
+              </div>
 
               <button
                 type="submit"
                 className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
               >
-                Save account settings
+                Save settings
               </button>
             </form>
           </Surface>
 
-          <Surface title="Add savings entry" description="Savings changes now live in settings">
-            <form onSubmit={handleSavingsSubmit} className="space-y-4">
-              <Input
-                label="Savings title"
-                value={savingsForm.title}
-                onChange={(value) =>
-                  setSavingsForm((current) => ({ ...current, title: value }))
-                }
-                placeholder="SPI, emergency fund..."
-              />
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="Amount"
-                  type="number"
-                  value={savingsForm.amount}
-                  onChange={(value) =>
-                    setSavingsForm((current) => ({ ...current, amount: value }))
-                  }
-                  placeholder="0"
-                />
-                <Field label="Savings bucket">
-                  <select
-                    value={savingsForm.bucketId}
-                    onChange={(event) =>
-                      setSavingsForm((current) => ({
-                        ...current,
-                        bucketId: event.target.value,
-                      }))
-                    }
-                    className={fieldClassName}
-                  >
-                    {data.savingsBuckets.map((bucket) => (
-                      <option key={bucket.id} value={bucket.id}>
-                        {bucket.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+          <Surface title="Savings and loans" description="These now live on their own page">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-4 text-sm leading-6 text-slate-300">
+                Use the dedicated savings page to add savings entries, track emergency-fund
+                progress, create loans, and log monthly loan payments.
               </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="Date"
-                  type="date"
-                  value={savingsForm.date}
-                  onChange={(value) =>
-                    setSavingsForm((current) => ({ ...current, date: value }))
-                  }
-                />
-                <Input
-                  label="Note"
-                  value={savingsForm.note}
-                  onChange={(value) =>
-                    setSavingsForm((current) => ({ ...current, note: value }))
-                  }
-                  placeholder="Optional detail"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
+              <Link
+                href="/savings"
+                className="inline-flex items-center rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
               >
-                Add savings
-              </button>
-            </form>
+                Open savings page
+              </Link>
+            </div>
           </Surface>
         </section>
 

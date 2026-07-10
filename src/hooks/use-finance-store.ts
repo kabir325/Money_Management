@@ -6,6 +6,8 @@ import {
   STORAGE_KEY,
   normalizeFinanceData,
   withUpdatedTimestamp,
+  type BalanceSource,
+  type EmergencyFundProfile,
   type FinanceData,
   type SalaryDay,
   type SpendingType,
@@ -15,6 +17,7 @@ type AddExpenseInput = {
   title: string;
   amount: number;
   categoryId: string;
+  account: BalanceSource;
   date: string;
   note?: string;
 };
@@ -23,6 +26,7 @@ type AddSavingsInput = {
   title: string;
   amount: number;
   bucketId: string;
+  account: BalanceSource;
   date: string;
   note?: string;
 };
@@ -30,6 +34,7 @@ type AddSavingsInput = {
 type AddCashEntryInput = {
   title: string;
   amount: number;
+  account: BalanceSource;
   date: string;
   note?: string;
 };
@@ -43,6 +48,25 @@ type AddCategoryInput = {
 type AddBucketInput = {
   name: string;
   color: string;
+};
+
+type AddLoanInput = {
+  title: string;
+  lender: string;
+  principalAmount: number;
+  monthlyPayment: number;
+  totalMonths: number;
+  dueDay: number;
+  startDate: string;
+  note?: string;
+};
+
+type AddLoanPaymentInput = {
+  loanId: string;
+  amount: number;
+  account: BalanceSource;
+  date: string;
+  note?: string;
 };
 
 const SYNC_POLL_MS = 5000;
@@ -183,7 +207,16 @@ export function useFinanceStore() {
   const updateBalance = (currentBalance: number) => {
     updateData((current) => ({
       ...current,
-      currentBalance: Number.isFinite(currentBalance) ? currentBalance : 0,
+      bankBalance: Number.isFinite(currentBalance) ? currentBalance : 0,
+      cashBalance: 0,
+    }));
+  };
+
+  const updateBalances = (bankBalance: number, cashBalance: number) => {
+    updateData((current) => ({
+      ...current,
+      bankBalance: Number.isFinite(bankBalance) ? bankBalance : 0,
+      cashBalance: Number.isFinite(cashBalance) ? cashBalance : 0,
     }));
   };
 
@@ -194,16 +227,31 @@ export function useFinanceStore() {
     }));
   };
 
+  const updateSalaryAmount = (salaryAmount: number) => {
+    updateData((current) => ({
+      ...current,
+      salaryAmount: Number.isFinite(salaryAmount) ? salaryAmount : 0,
+    }));
+  };
+
+  const updateEmergencyFundProfile = (emergencyFundProfile: EmergencyFundProfile) => {
+    updateData((current) => ({
+      ...current,
+      emergencyFundProfile,
+    }));
+  };
+
   const addExpense = (input: AddExpenseInput) => {
     updateData((current) => ({
       ...current,
-      currentBalance: current.currentBalance - input.amount,
+      ...applyAccountDelta(current, input.account, -input.amount),
       expenses: [
         {
           id: crypto.randomUUID(),
           title: input.title.trim(),
           amount: input.amount,
           categoryId: input.categoryId,
+          account: input.account,
           date: input.date,
           note: input.note?.trim() ?? "",
         },
@@ -215,13 +263,14 @@ export function useFinanceStore() {
   const addSavings = (input: AddSavingsInput) => {
     updateData((current) => ({
       ...current,
-      currentBalance: current.currentBalance - input.amount,
+      ...applyAccountDelta(current, input.account, -input.amount),
       savingsEntries: [
         {
           id: crypto.randomUUID(),
           title: input.title.trim(),
           amount: input.amount,
           bucketId: input.bucketId,
+          account: input.account,
           date: input.date,
           note: input.note?.trim() ?? "",
         },
@@ -233,12 +282,13 @@ export function useFinanceStore() {
   const addCashEntry = (input: AddCashEntryInput) => {
     updateData((current) => ({
       ...current,
-      currentBalance: current.currentBalance + input.amount,
+      ...applyAccountDelta(current, input.account, input.amount),
       cashEntries: [
         {
           id: crypto.randomUUID(),
           title: input.title.trim(),
           amount: input.amount,
+          account: input.account,
           date: input.date,
           note: input.note?.trim() ?? "",
         },
@@ -278,13 +328,61 @@ export function useFinanceStore() {
     return bucket;
   };
 
+  const addLoan = (input: AddLoanInput) => {
+    const loan = {
+      id: crypto.randomUUID(),
+      title: input.title.trim(),
+      lender: input.lender.trim(),
+      principalAmount: input.principalAmount,
+      monthlyPayment: input.monthlyPayment,
+      totalMonths: Math.max(1, Math.round(input.totalMonths)),
+      dueDay: Math.min(31, Math.max(1, Math.round(input.dueDay))),
+      startDate: input.startDate,
+      note: input.note?.trim() ?? "",
+      payments: [],
+    };
+
+    updateData((current) => ({
+      ...current,
+      loans: [loan, ...current.loans],
+    }));
+  };
+
+  const addLoanPayment = (input: AddLoanPaymentInput) => {
+    updateData((current) => ({
+      ...current,
+      ...applyAccountDelta(current, input.account, -input.amount),
+      loans: current.loans.map((loan) =>
+        loan.id === input.loanId
+          ? {
+              ...loan,
+              payments: [
+                {
+                  id: crypto.randomUUID(),
+                  amount: input.amount,
+                  account: input.account,
+                  date: input.date,
+                  note: input.note?.trim() ?? "",
+                },
+                ...loan.payments,
+              ],
+            }
+          : loan,
+      ),
+    }));
+  };
+
   const removeExpense = (id: string) => {
     updateData((current) => {
       const removedExpense = current.expenses.find((expense) => expense.id === id);
 
       return {
         ...current,
-        currentBalance: current.currentBalance + (removedExpense?.amount ?? 0),
+        ...applyAccountDelta(
+          current,
+          removedExpense?.account ?? "bank",
+          removedExpense?.amount ?? 0,
+        ),
         expenses: current.expenses.filter((expense) => expense.id !== id),
       };
     });
@@ -296,7 +394,11 @@ export function useFinanceStore() {
 
       return {
         ...current,
-        currentBalance: current.currentBalance + (removedSavings?.amount ?? 0),
+        ...applyAccountDelta(
+          current,
+          removedSavings?.account ?? "bank",
+          removedSavings?.amount ?? 0,
+        ),
         savingsEntries: current.savingsEntries.filter((entry) => entry.id !== id),
       };
     });
@@ -308,10 +410,21 @@ export function useFinanceStore() {
 
       return {
         ...current,
-        currentBalance: current.currentBalance - (removedCashEntry?.amount ?? 0),
+        ...applyAccountDelta(
+          current,
+          removedCashEntry?.account ?? "bank",
+          -(removedCashEntry?.amount ?? 0),
+        ),
         cashEntries: current.cashEntries.filter((entry) => entry.id !== id),
       };
     });
+  };
+
+  const removeLoan = (id: string) => {
+    updateData((current) => ({
+      ...current,
+      loans: current.loans.filter((loan) => loan.id !== id),
+    }));
   };
 
   const removeCategory = (id: string) => {
@@ -347,15 +460,21 @@ export function useFinanceStore() {
     refreshData: loadRemoteData,
     retrySync: () => persistRemoteData(latestDataRef.current),
     updateBalance,
+    updateBalances,
     updateSalaryDay,
+    updateSalaryAmount,
+    updateEmergencyFundProfile,
     addExpense,
     addSavings,
     addCashEntry,
     addCategory,
     addBucket,
+    addLoan,
+    addLoanPayment,
     removeExpense,
     removeSavings,
     removeCashEntry,
+    removeLoan,
     removeCategory,
     removeBucket,
   };
@@ -377,10 +496,30 @@ function getLegacyLocalData() {
 function shouldMigrateLegacyData(remoteData: FinanceData) {
   const isRemoteEmpty =
     remoteData.currentBalance === 0 &&
+    remoteData.bankBalance === 0 &&
+    remoteData.cashBalance === 0 &&
     remoteData.expenses.length === 0 &&
     remoteData.savingsEntries.length === 0 &&
     remoteData.cashEntries.length === 0 &&
+    remoteData.loans.length === 0 &&
     remoteData.updatedAt === DEFAULT_DATA.updatedAt;
 
   return isRemoteEmpty;
+}
+
+function applyAccountDelta(
+  current: FinanceData,
+  account: BalanceSource,
+  delta: number,
+) {
+  const bankBalance =
+    account === "bank" ? current.bankBalance + delta : current.bankBalance;
+  const cashBalance =
+    account === "cash" ? current.cashBalance + delta : current.cashBalance;
+
+  return {
+    bankBalance,
+    cashBalance,
+    currentBalance: bankBalance + cashBalance,
+  };
 }

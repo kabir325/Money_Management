@@ -51,9 +51,12 @@ export function SavingsPanel() {
     syncError,
     retrySync,
     addSavings,
+    updateSavings,
     removeSavings,
     addLoan,
     addLoanPayment,
+    updateLoanPayment,
+    removeLoanPayment,
     removeLoan,
   } = useFinanceStore();
   const [savingsForm, setSavingsForm] = useState<SavingsFormState>({
@@ -75,6 +78,8 @@ export function SavingsPanel() {
     note: "",
   });
   const [paymentForms, setPaymentForms] = useState<Record<string, LoanPaymentFormState>>({});
+  const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
+  const [editingPaymentIds, setEditingPaymentIds] = useState<Record<string, string | null>>({});
 
   const emergencyFundTotal = useMemo(
     () =>
@@ -118,11 +123,14 @@ export function SavingsPanel() {
           ? Math.min(100, Math.round((paidAmount / loan.principalAmount) * 100))
           : 0;
 
+      const reminder = getLoanReminder(loan);
+
       return {
         ...loan,
         paidAmount,
         outstanding,
         progress,
+        reminder,
       };
     });
   }, [data.loans]);
@@ -135,22 +143,35 @@ export function SavingsPanel() {
       return;
     }
 
-    addSavings({
-      title: savingsForm.title,
-      amount,
-      bucketId: savingsForm.bucketId,
-      account: savingsForm.account,
-      date: savingsForm.date,
-      note: savingsForm.note,
-    });
+    if (editingSavingsId) {
+      updateSavings(editingSavingsId, {
+        title: savingsForm.title,
+        amount,
+        bucketId: savingsForm.bucketId,
+        account: savingsForm.account,
+        date: savingsForm.date,
+        note: savingsForm.note,
+      });
+    } else {
+      addSavings({
+        title: savingsForm.title,
+        amount,
+        bucketId: savingsForm.bucketId,
+        account: savingsForm.account,
+        date: savingsForm.date,
+        note: savingsForm.note,
+      });
+    }
 
     setSavingsForm((current) => ({
       ...current,
       title: "",
       amount: "",
+      bucketId: data.savingsBuckets[0]?.id ?? "",
       date: todayInputValue(),
       note: "",
     }));
+    setEditingSavingsId(null);
   };
 
   const handleLoanSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -196,17 +217,71 @@ export function SavingsPanel() {
       return;
     }
 
-    addLoanPayment({
-      loanId,
-      amount,
-      account: form.account,
-      date: form.date,
-      note: form.note,
-    });
+    const editingPaymentId = editingPaymentIds[loanId];
+
+    if (editingPaymentId) {
+      updateLoanPayment(loanId, editingPaymentId, {
+        amount,
+        account: form.account,
+        date: form.date,
+        note: form.note,
+      });
+    } else {
+      addLoanPayment({
+        loanId,
+        amount,
+        account: form.account,
+        date: form.date,
+        note: form.note,
+      });
+    }
 
     setPaymentForms((current) => ({
       ...current,
       [loanId]: defaultPaymentForm(),
+    }));
+    setEditingPaymentIds((current) => ({
+      ...current,
+      [loanId]: null,
+    }));
+  };
+
+  const openEditSavings = (id: string) => {
+    const entry = data.savingsEntries.find((item) => item.id === id);
+    if (!entry) {
+      return;
+    }
+
+    setSavingsForm({
+      title: entry.title,
+      amount: `${entry.amount}`,
+      bucketId: entry.bucketId,
+      account: entry.account,
+      date: entry.date,
+      note: entry.note ?? "",
+    });
+    setEditingSavingsId(id);
+  };
+
+  const openEditLoanPayment = (loanId: string, paymentId: string) => {
+    const loan = data.loans.find((item) => item.id === loanId);
+    const payment = loan?.payments.find((item) => item.id === paymentId);
+    if (!loan || !payment) {
+      return;
+    }
+
+    setPaymentForms((current) => ({
+      ...current,
+      [loanId]: {
+        amount: `${payment.amount}`,
+        account: payment.account,
+        date: payment.date,
+        note: payment.note ?? "",
+      },
+    }));
+    setEditingPaymentIds((current) => ({
+      ...current,
+      [loanId]: paymentId,
     }));
   };
 
@@ -428,7 +503,7 @@ export function SavingsPanel() {
                 type="submit"
                 className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
               >
-                Add savings
+                {editingSavingsId ? "Update savings" : "Add savings"}
               </button>
             </form>
           </Surface>
@@ -443,6 +518,7 @@ export function SavingsPanel() {
                     subtitle={`${data.savingsBuckets.find((bucket) => bucket.id === entry.bucketId)?.name ?? "Savings"} • ${getAccountLabel(entry.account)} • ${formatShortDate(entry.date)}`}
                     amount={`-${formatCurrency(entry.amount)}`}
                     amountClassName="text-emerald-400"
+                    onEdit={() => openEditSavings(entry.id)}
                     onDelete={() => removeSavings(entry.id)}
                   />
                 ))
@@ -584,6 +660,18 @@ export function SavingsPanel() {
                         />
                       </div>
 
+                      <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3">
+                        <p
+                          className={`text-sm font-medium ${
+                            loan.reminder.status === "overdue"
+                              ? "text-rose-300"
+                              : "text-sky-300"
+                          }`}
+                        >
+                          {loan.reminder.message}
+                        </p>
+                      </div>
+
                       <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-800">
                         <div
                           className="h-full rounded-full bg-violet-500"
@@ -664,9 +752,27 @@ export function SavingsPanel() {
                           type="submit"
                           className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-white"
                         >
-                          Add loan payment
+                          {editingPaymentIds[loan.id] ? "Update loan payment" : "Add loan payment"}
                         </button>
                       </form>
+
+                      <div className="mt-4 space-y-3">
+                        {loan.payments.length ? (
+                          loan.payments.map((payment) => (
+                            <LedgerRow
+                              key={payment.id}
+                              title="Loan payment"
+                              subtitle={`${getAccountLabel(payment.account)} • ${formatShortDate(payment.date)}`}
+                              amount={`-${formatCurrency(payment.amount)}`}
+                              amountClassName="text-violet-300"
+                              onEdit={() => openEditLoanPayment(loan.id, payment.id)}
+                              onDelete={() => removeLoanPayment(loan.id, payment.id)}
+                            />
+                          ))
+                        ) : (
+                          <EmptyState text="No EMI payments recorded yet." />
+                        )}
+                      </div>
                     </div>
                   );
                 })
@@ -765,12 +871,14 @@ function LedgerRow({
   subtitle,
   amount,
   amountClassName,
+  onEdit,
   onDelete,
 }: {
   title: string;
   subtitle: string;
   amount: string;
   amountClassName: string;
+  onEdit?: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -781,6 +889,15 @@ function LedgerRow({
       </div>
       <div className="flex items-center gap-3">
         <p className={`text-sm font-semibold ${amountClassName}`}>{amount}</p>
+        {onEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-800 hover:text-slate-100"
+          >
+            Edit
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onDelete}
@@ -799,6 +916,64 @@ function EmptyState({ text }: { text: string }) {
       {text}
     </div>
   );
+}
+
+function getLoanReminder(loan: {
+  totalMonths: number;
+  dueDay: number;
+  startDate: string;
+  payments: { date: string }[];
+}) {
+  const dueDates = buildLoanDueDates(loan.startDate, loan.dueDay, loan.totalMonths);
+  const paidInstallments = Math.min(loan.payments.length, dueDates.length);
+
+  if (paidInstallments >= dueDates.length) {
+    return {
+      status: "done" as const,
+      message: "All scheduled installments are logged.",
+    };
+  }
+
+  const nextDueDate = dueDates[paidInstallments];
+  const today = new Date();
+  const diffDays = Math.ceil(
+    (nextDueDate.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12).getTime()) /
+      (1000 * 60 * 60 * 24),
+  );
+
+  if (diffDays < 0) {
+    return {
+      status: "overdue" as const,
+      message: `EMI overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"}. Due on ${formatLongDate(nextDueDate)}.`,
+    };
+  }
+
+  if (diffDays === 0) {
+    return {
+      status: "due" as const,
+      message: `EMI is due today for ${formatLongDate(nextDueDate)}.`,
+    };
+  }
+
+  return {
+    status: "upcoming" as const,
+    message: `Next EMI due in ${diffDays} day${diffDays === 1 ? "" : "s"} on ${formatLongDate(nextDueDate)}.`,
+  };
+}
+
+function buildLoanDueDates(startDate: string, dueDay: number, totalMonths: number) {
+  const start = parseInputDate(startDate);
+  const firstDueMonthOffset = start.getDate() > dueDay ? 1 : 0;
+
+  return Array.from({ length: totalMonths }, (_, index) =>
+    getClampedMonthDay(start.getFullYear(), start.getMonth() + firstDueMonthOffset + index, dueDay),
+  );
+}
+
+function getClampedMonthDay(year: number, monthIndex: number, day: number) {
+  const monthDate = new Date(year, monthIndex, 1, 12);
+  const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+  return new Date(monthDate.getFullYear(), monthDate.getMonth(), Math.min(day, lastDay), 12);
 }
 
 const fieldClassName =

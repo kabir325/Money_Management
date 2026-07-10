@@ -23,6 +23,8 @@ import {
   getEmergencyFundMonths,
   getEmergencyProfileLabel,
   getMonthBuckets,
+  getSalaryDueDate,
+  getSalaryDueMonthKey,
   getSalaryCycleRange,
   isDateInRange,
   parseInputDate,
@@ -89,6 +91,8 @@ export function Dashboard() {
     retrySync,
     addExpense,
     addCashEntry,
+    addSalaryEntry,
+    updateExpense,
     removeExpense,
     removeCashEntry,
   } = useFinanceStore();
@@ -100,6 +104,12 @@ export function Dashboard() {
     defaultExpenseForm(DEFAULT_DATA),
   );
   const [cashForm, setCashForm] = useState<CashFormState>(defaultCashForm);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [salaryPromptDismissedKey, setSalaryPromptDismissedKey] = useState<string | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : window.localStorage.getItem("salary-prompt-dismissed-key"),
+  );
 
   const categoryMap = useMemo(
     () => new Map(data.categories.map((item) => [item.id, item])),
@@ -134,6 +144,13 @@ export function Dashboard() {
         isDateInRange(entry.date, cycle.start, cycle.end),
       ),
     [cycle.end, cycle.start, data.cashEntries],
+  );
+  const currentCycleSalary = useMemo(
+    () =>
+      data.salaryEntries.filter((entry) =>
+        isDateInRange(entry.date, cycle.start, cycle.end),
+      ),
+    [cycle.end, cycle.start, data.salaryEntries],
   );
 
   const expenseByCategory = useMemo(() => {
@@ -204,6 +221,14 @@ export function Dashboard() {
         tag: `Money received • ${getAccountLabel(entry.account)}`,
         tone: "cash" as const,
       })),
+      ...data.salaryEntries.map((entry) => ({
+        id: entry.id,
+        title: "Salary received",
+        amount: entry.amount,
+        date: entry.date,
+        tag: `Salary • ${getAccountLabel(entry.account)}`,
+        tone: "cash" as const,
+      })),
       ...data.loans.flatMap((loan) =>
         loan.payments.map((payment) => ({
           id: payment.id,
@@ -224,6 +249,7 @@ export function Dashboard() {
     data.cashEntries,
     data.expenses,
     data.loans,
+    data.salaryEntries,
     data.savingsEntries,
   ]);
 
@@ -250,8 +276,14 @@ export function Dashboard() {
     (sum, entry) => sum + entry.amount,
     0,
   );
+  const currentCycleSalaryTotal = currentCycleSalary.reduce(
+    (sum, entry) => sum + entry.amount,
+    0,
+  );
+  const currentCycleInflow = currentCycleCashTotal + currentCycleSalaryTotal;
   const totalSavings = data.savingsEntries.reduce((sum, entry) => sum + entry.amount, 0);
   const totalCashReceived = data.cashEntries.reduce((sum, entry) => sum + entry.amount, 0);
+  const totalSalaryReceived = data.salaryEntries.reduce((sum, entry) => sum + entry.amount, 0);
   const emergencyFundTotal = data.savingsEntries
     .filter((entry) => entry.bucketId === "emergency-fund")
     .reduce((sum, entry) => sum + entry.amount, 0);
@@ -265,7 +297,7 @@ export function Dashboard() {
     const paid = loan.payments.reduce((paymentSum, payment) => paymentSum + payment.amount, 0);
     return sum + Math.max(loan.principalAmount - paid, 0);
   }, 0);
-  const trackedCycleMoney = currentCycleSpent + currentCycleSaved + currentCycleCashTotal;
+  const trackedCycleMoney = currentCycleSpent + currentCycleSaved + currentCycleInflow;
   const planningBase = Math.max(
     trackedCycleMoney,
     Math.max(data.currentBalance, 0) + trackedCycleMoney,
@@ -309,10 +341,46 @@ export function Dashboard() {
       : "Essentials are staying inside the 50% lane so far.",
     `Keep daily spending near ${formatCurrency(dailyAllowance)} until salary lands.`,
   ];
+  const salaryDueDate = useMemo(
+    () => getSalaryDueDate(new Date(), data.salaryDay),
+    [data.salaryDay],
+  );
+  const salaryDueMonthKey = useMemo(
+    () => getSalaryDueMonthKey(new Date(), data.salaryDay),
+    [data.salaryDay],
+  );
+  const hasCurrentSalaryEntry = data.salaryEntries.some(
+    (entry) => entry.salaryMonthKey === salaryDueMonthKey,
+  );
+  const showSalaryPrompt =
+    data.salaryAmount > 0 &&
+    !hasCurrentSalaryEntry &&
+    new Date().getTime() >= salaryDueDate.getTime() &&
+    salaryPromptDismissedKey !== salaryDueMonthKey;
 
   const openQuickAdd = () => {
     setExpenseForm(defaultExpenseForm(data));
     setCashForm(defaultCashForm());
+    setQuickAddMode("expense");
+    setEditingExpenseId(null);
+    setQuickAddOpen(true);
+  };
+
+  const openEditExpense = (expenseId: string) => {
+    const expense = data.expenses.find((entry) => entry.id === expenseId);
+    if (!expense) {
+      return;
+    }
+
+    setExpenseForm({
+      title: expense.title,
+      amount: `${expense.amount}`,
+      categoryId: expense.categoryId,
+      account: expense.account,
+      date: expense.date,
+      note: expense.note ?? "",
+    });
+    setEditingExpenseId(expense.id);
     setQuickAddMode("expense");
     setQuickAddOpen(true);
   };
@@ -325,16 +393,28 @@ export function Dashboard() {
       return;
     }
 
-    addExpense({
-      title: expenseForm.title,
-      amount,
-      categoryId: expenseForm.categoryId,
-      account: expenseForm.account,
-      date: expenseForm.date,
-      note: expenseForm.note,
-    });
+    if (editingExpenseId) {
+      updateExpense(editingExpenseId, {
+        title: expenseForm.title,
+        amount,
+        categoryId: expenseForm.categoryId,
+        account: expenseForm.account,
+        date: expenseForm.date,
+        note: expenseForm.note,
+      });
+    } else {
+      addExpense({
+        title: expenseForm.title,
+        amount,
+        categoryId: expenseForm.categoryId,
+        account: expenseForm.account,
+        date: expenseForm.date,
+        note: expenseForm.note,
+      });
+    }
 
     setExpenseForm(defaultExpenseForm(data));
+    setEditingExpenseId(null);
     setQuickAddOpen(false);
   };
 
@@ -356,6 +436,23 @@ export function Dashboard() {
 
     setCashForm(defaultCashForm());
     setQuickAddOpen(false);
+  };
+
+  const handleDismissSalaryPrompt = () => {
+    window.localStorage.setItem("salary-prompt-dismissed-key", salaryDueMonthKey);
+    setSalaryPromptDismissedKey(salaryDueMonthKey);
+  };
+
+  const handleConfirmSalary = () => {
+    addSalaryEntry({
+      amount: data.salaryAmount,
+      account: "bank",
+      date: todayInputValue(),
+      salaryMonthKey: salaryDueMonthKey,
+      note: "Salary confirmed from dashboard popup",
+    });
+    window.localStorage.removeItem("salary-prompt-dismissed-key");
+    setSalaryPromptDismissedKey(null);
   };
 
   if (!isReady) {
@@ -425,7 +522,7 @@ export function Dashboard() {
               <StatCard label="Bank" value={formatCurrency(data.bankBalance)} />
               <StatCard label="Cash" value={formatCurrency(data.cashBalance)} />
               <StatCard label="Cycle spend" value={formatCurrency(currentCycleSpent)} />
-              <StatCard label="Cash in" value={formatCurrency(currentCycleCashTotal)} />
+              <StatCard label="Inflow" value={formatCurrency(currentCycleInflow)} />
               <StatCard label="Salary" value={formatCurrency(data.salaryAmount)} />
               <StatCard label="Cycle saved" value={formatCurrency(currentCycleSaved)} />
               <StatCard label="Savings rate" value={`${savingsRate}%`} />
@@ -559,12 +656,7 @@ export function Dashboard() {
                     <Legend wrapperStyle={{ color: "#cbd5e1" }} />
                     <Bar dataKey="spent" name="Spent" fill="#8b5cf6" radius={[10, 10, 0, 0]} />
                     <Bar dataKey="saved" name="Saved" fill="#14b8a6" radius={[10, 10, 0, 0]} />
-                    <Bar
-                      dataKey="received"
-                      name="Cash In"
-                      fill="#38bdf8"
-                      radius={[10, 10, 0, 0]}
-                    />
+                    <Bar dataKey="received" name="Inflow" fill="#38bdf8" radius={[10, 10, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -627,6 +719,7 @@ export function Dashboard() {
                 <MiniInsight label="Projected spend" value={formatCurrency(projectedSpend)} />
                 <MiniInsight label="Total tracked savings" value={formatCurrency(totalSavings)} />
                 <MiniInsight label="Cash gifts tracked" value={formatCurrency(totalCashReceived)} />
+                <MiniInsight label="Salary received" value={formatCurrency(totalSalaryReceived)} />
                 <MiniInsight label="Monthly loan load" value={formatCurrency(monthlyLoanLoad)} />
                 <MiniInsight label="Outstanding loans" value={formatCurrency(totalOutstandingLoans)} />
                 <MiniInsight label="Top category" value={topCategory} />
@@ -696,6 +789,7 @@ export function Dashboard() {
                         subtitle={`${categoryMap.get(item.entry.categoryId)?.name ?? "Category"} • ${getAccountLabel(item.entry.account)} • ${formatShortDate(item.entry.date)}`}
                         amount={`-${formatCurrency(item.entry.amount)}`}
                         amountClassName="text-rose-400"
+                        onEdit={() => openEditExpense(item.entry.id)}
                         onDelete={() => removeExpense(item.entry.id)}
                       />
                     ) : (
@@ -799,7 +893,11 @@ export function Dashboard() {
                   Quick Add
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold text-slate-50">
-                  {quickAddMode === "expense" ? "Add expenditure" : "Add money received"}
+                  {quickAddMode === "expense"
+                    ? editingExpenseId
+                      ? "Edit expenditure"
+                      : "Add expenditure"
+                    : "Add money received"}
                 </h2>
                 <p className="mt-2 text-sm text-slate-400">
                   {quickAddMode === "expense"
@@ -921,7 +1019,7 @@ export function Dashboard() {
                   type="submit"
                   className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
                 >
-                  Save expense
+                  {editingExpenseId ? "Update expense" : "Save expense"}
                 </button>
               </form>
             ) : (
@@ -989,6 +1087,39 @@ export function Dashboard() {
                 </button>
               </form>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {showSalaryPrompt ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm">
+          <div className="absolute inset-x-4 top-24 mx-auto max-w-md rounded-[28px] border border-slate-800 bg-slate-950 p-5 shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-300">
+              Salary Check
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-50">
+              Salary came okay?
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Your salary is due around {formatLongDate(salaryDueDate)}. If it has arrived, I can
+              add {formatCurrency(data.salaryAmount)} to your bank balance now.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={handleConfirmSalary}
+                className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+              >
+                Yes, add salary
+              </button>
+              <button
+                type="button"
+                onClick={handleDismissSalaryPrompt}
+                className="flex-1 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+              >
+                Not yet
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -1184,12 +1315,14 @@ function LedgerRow({
   subtitle,
   amount,
   amountClassName,
+  onEdit,
   onDelete,
 }: {
   title: string;
   subtitle: string;
   amount: string;
   amountClassName: string;
+  onEdit?: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -1200,6 +1333,15 @@ function LedgerRow({
       </div>
       <div className="flex items-center gap-3">
         <p className={`text-sm font-semibold ${amountClassName}`}>{amount}</p>
+        {onEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-800 hover:text-slate-100"
+          >
+            Edit
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onDelete}
@@ -1293,9 +1435,13 @@ function buildComparisonData(data: FinanceData, view: ComparisonView) {
     saved: data.savingsEntries
       .filter((entry) => getBucketKey(entry.date, view) === bucket.key)
       .reduce((sum, entry) => sum + entry.amount, 0),
-    received: data.cashEntries
-      .filter((entry) => getBucketKey(entry.date, view) === bucket.key)
-      .reduce((sum, entry) => sum + entry.amount, 0),
+    received:
+      data.cashEntries
+        .filter((entry) => getBucketKey(entry.date, view) === bucket.key)
+        .reduce((sum, entry) => sum + entry.amount, 0) +
+      data.salaryEntries
+        .filter((entry) => getBucketKey(entry.date, view) === bucket.key)
+        .reduce((sum, entry) => sum + entry.amount, 0),
   }));
 }
 

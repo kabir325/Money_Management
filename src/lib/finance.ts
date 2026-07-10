@@ -45,6 +45,15 @@ export type CashEntry = {
   note?: string;
 };
 
+export type SalaryEntry = {
+  id: string;
+  amount: number;
+  account: BalanceSource;
+  date: string;
+  salaryMonthKey: string;
+  note?: string;
+};
+
 export type LoanPayment = {
   id: string;
   amount: number;
@@ -78,6 +87,7 @@ export type FinanceData = {
   expenses: Expense[];
   savingsEntries: SavingsEntry[];
   cashEntries: CashEntry[];
+  salaryEntries: SalaryEntry[];
   loans: Loan[];
   updatedAt: string;
 };
@@ -111,6 +121,7 @@ export const DEFAULT_DATA: FinanceData = {
   expenses: [],
   savingsEntries: [],
   cashEntries: [],
+  salaryEntries: [],
   loans: [],
   updatedAt: new Date(0).toISOString(),
 };
@@ -157,6 +168,11 @@ export function normalizeFinanceData(input: unknown): FinanceData {
       ? candidate.cashEntries
           .map((entry) => normalizeCashEntry(entry))
           .filter((entry): entry is CashEntry => entry !== null)
+      : [],
+    salaryEntries: Array.isArray(candidate.salaryEntries)
+      ? candidate.salaryEntries
+          .map((entry) => normalizeSalaryEntry(entry))
+          .filter((entry): entry is SalaryEntry => entry !== null)
       : [],
     loans: Array.isArray(candidate.loans)
       ? candidate.loans
@@ -255,6 +271,20 @@ export function getSalaryCycleRange(referenceDate: Date, salaryDay: SalaryDay) {
   );
 
   return { start, end, daysLeft };
+}
+
+export function getSalaryDueDate(referenceDate: Date, salaryDay: SalaryDay) {
+  const today = atMidday(referenceDate);
+  const safeDay = clampDay(salaryDay);
+  const currentMonthSalaryDate = createMonthDay(today.getFullYear(), today.getMonth(), safeDay);
+
+  return today.getTime() >= currentMonthSalaryDate.getTime()
+    ? currentMonthSalaryDate
+    : createMonthDay(today.getFullYear(), today.getMonth() - 1, safeDay);
+}
+
+export function getSalaryDueMonthKey(referenceDate: Date, salaryDay: SalaryDay) {
+  return toMonthKey(getSalaryDueDate(referenceDate, salaryDay));
 }
 
 export function isDateInRange(date: string, start: Date, end: Date) {
@@ -430,6 +460,33 @@ function normalizeCashEntry(value: unknown): CashEntry | null {
     amount: normalizeNumber(candidate.amount, 0),
     account: normalizeBalanceSource(candidate.account),
     date: String(candidate.date),
+    note: typeof candidate.note === "string" ? candidate.note : "",
+  };
+}
+
+function normalizeSalaryEntry(value: unknown): SalaryEntry | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("id" in value) ||
+    !("amount" in value) ||
+    !("date" in value)
+  ) {
+    return null;
+  }
+
+  const candidate = value as Partial<SalaryEntry>;
+  const date = String(candidate.date);
+
+  return {
+    id: String(candidate.id),
+    amount: normalizeNumber(candidate.amount, 0),
+    account: normalizeBalanceSource(candidate.account),
+    date,
+    salaryMonthKey:
+      typeof candidate.salaryMonthKey === "string" && candidate.salaryMonthKey
+        ? candidate.salaryMonthKey
+        : toMonthKey(parseInputDate(date)),
     note: typeof candidate.note === "string" ? candidate.note : "",
   };
 }

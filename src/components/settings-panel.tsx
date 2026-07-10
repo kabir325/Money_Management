@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { logout } from "@/app/actions/auth";
 import {
   formatCurrency,
@@ -33,6 +33,7 @@ export function SettingsPanel() {
     updateSalaryDay,
     updateSalaryAmount,
     updateEmergencyFundProfile,
+    replaceData,
     addCategory,
     addBucket,
     removeCategory,
@@ -52,6 +53,7 @@ export function SettingsPanel() {
     name: "",
     color: "#14b8a6",
   });
+  const backupInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!isReady) {
@@ -124,6 +126,36 @@ export function SettingsPanel() {
   const handleBucketDelete = (id: string) => {
     if (!removeBucket(id)) {
       window.alert("Delete the savings entries in this bucket first.");
+    }
+  };
+
+  const handleExportBackup = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `personal-finance-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw);
+      replaceData(parsed);
+      window.alert("Backup imported successfully.");
+    } catch {
+      window.alert("Could not import that backup file.");
+    } finally {
+      event.target.value = "";
     }
   };
 
@@ -286,6 +318,40 @@ export function SettingsPanel() {
               >
                 Open savings page
               </Link>
+            </div>
+          </Surface>
+        </section>
+
+        <section className="grid gap-5 xl:grid-cols-2">
+          <Surface title="Backup" description="Export or restore your full synced finance data">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-4 text-sm leading-6 text-slate-300">
+                Export creates a JSON backup of balances, settings, expenses, savings, salary
+                entries, and loans. Import replaces the current synced data with the backup file.
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleExportBackup}
+                  className="rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
+                >
+                  Export backup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => backupInputRef.current?.click()}
+                  className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                >
+                  Import backup
+                </button>
+                <input
+                  ref={backupInputRef}
+                  type="file"
+                  accept="application/json"
+                  onChange={handleImportBackup}
+                  className="hidden"
+                />
+              </div>
             </div>
           </Surface>
         </section>

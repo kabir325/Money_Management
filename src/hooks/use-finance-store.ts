@@ -39,6 +39,14 @@ type AddCashEntryInput = {
   note?: string;
 };
 
+type AddSalaryEntryInput = {
+  amount: number;
+  account: BalanceSource;
+  date: string;
+  salaryMonthKey: string;
+  note?: string;
+};
+
 type AddCategoryInput = {
   name: string;
   color: string;
@@ -68,6 +76,10 @@ type AddLoanPaymentInput = {
   date: string;
   note?: string;
 };
+
+type UpdateExpenseInput = AddExpenseInput;
+type UpdateSavingsInput = AddSavingsInput;
+type UpdateLoanPaymentInput = Omit<AddLoanPaymentInput, "loanId">;
 
 const SYNC_POLL_MS = 5000;
 
@@ -297,6 +309,24 @@ export function useFinanceStore() {
     }));
   };
 
+  const addSalaryEntry = (input: AddSalaryEntryInput) => {
+    updateData((current) => ({
+      ...current,
+      ...applyAccountDelta(current, input.account, input.amount),
+      salaryEntries: [
+        {
+          id: crypto.randomUUID(),
+          amount: input.amount,
+          account: input.account,
+          date: input.date,
+          salaryMonthKey: input.salaryMonthKey,
+          note: input.note?.trim() ?? "",
+        },
+        ...current.salaryEntries.filter((entry) => entry.salaryMonthKey !== input.salaryMonthKey),
+      ],
+    }));
+  };
+
   const addCategory = (input: AddCategoryInput) => {
     const category = {
       id: `${input.name.toLowerCase().replace(/\s+/g, "-")}-${crypto.randomUUID().slice(0, 6)}`,
@@ -372,6 +402,105 @@ export function useFinanceStore() {
     }));
   };
 
+  const updateExpense = (id: string, input: UpdateExpenseInput) => {
+    updateData((current) => {
+      const existing = current.expenses.find((expense) => expense.id === id);
+      if (!existing) {
+        return current;
+      }
+
+      const reverted = applyAccountDelta(current, existing.account, existing.amount);
+      const nextBase = { ...current, ...reverted };
+      const applied = applyAccountDelta(nextBase, input.account, -input.amount);
+
+      return {
+        ...nextBase,
+        ...applied,
+        expenses: current.expenses.map((expense) =>
+          expense.id === id
+            ? {
+                ...expense,
+                title: input.title.trim(),
+                amount: input.amount,
+                categoryId: input.categoryId,
+                account: input.account,
+                date: input.date,
+                note: input.note?.trim() ?? "",
+              }
+            : expense,
+        ),
+      };
+    });
+  };
+
+  const updateSavings = (id: string, input: UpdateSavingsInput) => {
+    updateData((current) => {
+      const existing = current.savingsEntries.find((entry) => entry.id === id);
+      if (!existing) {
+        return current;
+      }
+
+      const reverted = applyAccountDelta(current, existing.account, existing.amount);
+      const nextBase = { ...current, ...reverted };
+      const applied = applyAccountDelta(nextBase, input.account, -input.amount);
+
+      return {
+        ...nextBase,
+        ...applied,
+        savingsEntries: current.savingsEntries.map((entry) =>
+          entry.id === id
+            ? {
+                ...entry,
+                title: input.title.trim(),
+                amount: input.amount,
+                bucketId: input.bucketId,
+                account: input.account,
+                date: input.date,
+                note: input.note?.trim() ?? "",
+              }
+            : entry,
+        ),
+      };
+    });
+  };
+
+  const updateLoanPayment = (loanId: string, paymentId: string, input: UpdateLoanPaymentInput) => {
+    updateData((current) => {
+      const loan = current.loans.find((item) => item.id === loanId);
+      const existing = loan?.payments.find((payment) => payment.id === paymentId);
+      if (!loan || !existing) {
+        return current;
+      }
+
+      const reverted = applyAccountDelta(current, existing.account, existing.amount);
+      const nextBase = { ...current, ...reverted };
+      const applied = applyAccountDelta(nextBase, input.account, -input.amount);
+
+      return {
+        ...nextBase,
+        ...applied,
+        loans: current.loans.map((item) =>
+          item.id === loanId
+            ? {
+                ...item,
+                payments: item.payments.map((payment) =>
+                  payment.id === paymentId
+                    ? {
+                        ...payment,
+                        amount: input.amount,
+                        account: input.account,
+                        date: input.date,
+                        note: input.note?.trim() ?? "",
+                      }
+                    : payment,
+                ),
+              }
+            : item,
+        ),
+      };
+    });
+  };
+
   const removeExpense = (id: string) => {
     updateData((current) => {
       const removedExpense = current.expenses.find((expense) => expense.id === id);
@@ -420,11 +549,56 @@ export function useFinanceStore() {
     });
   };
 
+  const removeLoanPayment = (loanId: string, paymentId: string) => {
+    updateData((current) => {
+      const loan = current.loans.find((item) => item.id === loanId);
+      const payment = loan?.payments.find((item) => item.id === paymentId);
+      if (!loan || !payment) {
+        return current;
+      }
+
+      return {
+        ...current,
+        ...applyAccountDelta(current, payment.account, payment.amount),
+        loans: current.loans.map((item) =>
+          item.id === loanId
+            ? {
+                ...item,
+                payments: item.payments.filter((entry) => entry.id !== paymentId),
+              }
+            : item,
+        ),
+      };
+    });
+  };
+
   const removeLoan = (id: string) => {
-    updateData((current) => ({
-      ...current,
-      loans: current.loans.filter((loan) => loan.id !== id),
-    }));
+    updateData((current) => {
+      const loan = current.loans.find((item) => item.id === id);
+      if (!loan) {
+        return current;
+      }
+
+      const restored = loan.payments.reduce(
+        (state, payment) => ({
+          ...state,
+          ...applyAccountDelta(state, payment.account, payment.amount),
+        }),
+        current,
+      );
+
+      return {
+        ...restored,
+        loans: restored.loans.filter((item) => item.id !== id),
+      };
+    });
+  };
+
+  const replaceData = (nextData: FinanceData) => {
+    const normalized = withUpdatedTimestamp(normalizeFinanceData(nextData));
+    latestDataRef.current = normalized;
+    setData(normalized);
+    void persistRemoteData(normalized);
   };
 
   const removeCategory = (id: string) => {
@@ -467,16 +641,22 @@ export function useFinanceStore() {
     addExpense,
     addSavings,
     addCashEntry,
+    addSalaryEntry,
     addCategory,
     addBucket,
     addLoan,
     addLoanPayment,
+    updateExpense,
+    updateSavings,
+    updateLoanPayment,
     removeExpense,
     removeSavings,
     removeCashEntry,
+    removeLoanPayment,
     removeLoan,
     removeCategory,
     removeBucket,
+    replaceData,
   };
 }
 
@@ -501,6 +681,7 @@ function shouldMigrateLegacyData(remoteData: FinanceData) {
     remoteData.expenses.length === 0 &&
     remoteData.savingsEntries.length === 0 &&
     remoteData.cashEntries.length === 0 &&
+    remoteData.salaryEntries.length === 0 &&
     remoteData.loans.length === 0 &&
     remoteData.updatedAt === DEFAULT_DATA.updatedAt;
 

@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --background: #020617;
-  --foreground: #f8fafc;
+  --background: #08111f;
+  --foreground: #e5edf7;
+  --surface: #0f1b2d;
+  --surface-2: #142235;
+  --line: rgba(148, 163, 184, 0.16);
+  --accent: #2f6fed;
+  --accent-soft: rgba(47, 111, 237, 0.16);
 }
 
 @theme inline {
@@ -23,7 +28,9 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--background);
+  background:
+    radial-gradient(circle at top, rgba(47, 111, 237, 0.08), transparent 24%),
+    linear-gradient(180deg, #08111f 0%, #0b1422 48%, #101a2a 100%);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
@@ -36,5 +43,34 @@ textarea {
 }
 
 ::selection {
-  background: rgba(139, 92, 246, 0.34);
+  background: rgba(47, 111, 237, 0.34);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, transparent, rgba(148, 163, 184, 0.03), transparent),
+    linear-gradient(to bottom, transparent, rgba(148, 163, 184, 0.02), transparent);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0b1422;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.45);
+  border-radius: 999px;
+  border: 2px solid #0b1422;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
 }

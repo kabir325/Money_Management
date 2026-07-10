@@ -57,12 +57,12 @@ type CashFormState = {
 type QuickAddMode = "expense" | "cash";
 type ComparisonView = "daily" | "monthly" | "yearly";
 
-const chartGrid = "#243041";
-const chartAxis = "#94a3b8";
+const chartGrid = "rgba(148,163,184,0.12)";
+const chartAxis = "#8fa1b7";
 const tooltipStyle = {
-  backgroundColor: "#020617",
-  border: "1px solid #1e293b",
-  borderRadius: "16px",
+  backgroundColor: "#0f1b2d",
+  border: "1px solid rgba(148,163,184,0.18)",
+  borderRadius: "14px",
   color: "#e2e8f0",
 };
 
@@ -470,13 +470,13 @@ export function Dashboard() {
       <div className="px-4 py-5 sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-28">
           {syncError ? (
-            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            <div className="rounded-2xl border border-sky-500/15 bg-sky-500/8 px-4 py-3 text-sm text-sky-100">
               <div className="flex items-center justify-between gap-3">
                 <span>{syncError}</span>
                 <button
                   type="button"
                   onClick={() => void retrySync()}
-                  className="rounded-xl border border-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/10"
+                  className="rounded-xl border border-sky-500/20 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/10"
                 >
                   Retry
                 </button>
@@ -484,7 +484,7 @@ export function Dashboard() {
             </div>
           ) : null}
 
-          <section className="rounded-[32px] border border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.16),_transparent_34%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(2,6,23,0.98))] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
+          <section className="rounded-[24px] border border-slate-700/70 bg-[linear-gradient(180deg,rgba(16,24,39,0.98),rgba(8,17,31,0.98))] p-5 shadow-[0_18px_50px_rgba(2,6,23,0.36)]">
             <div className="flex items-center justify-between gap-4">
               <h1 className="text-2xl font-semibold tracking-tight text-slate-50">
                 Personal Finance
@@ -494,14 +494,14 @@ export function Dashboard() {
                 <Link
                   href="/savings"
                   aria-label="Savings"
-                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700/80 bg-slate-900/90 text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
                 >
                   <SavingsIcon />
                 </Link>
                 <Link
                   href="/settings"
                   aria-label="Settings"
-                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700/80 bg-slate-900/90 text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
                 >
                   <SettingsIcon />
                 </Link>
@@ -509,7 +509,7 @@ export function Dashboard() {
                   <button
                     type="submit"
                     aria-label="Lock"
-                    className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                    className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700/80 bg-slate-900/90 text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
                   >
                     <LockIcon />
                   </button>
@@ -608,7 +608,7 @@ export function Dashboard() {
                 </div>
                 <Link
                   href="/savings"
-                  className="inline-flex items-center rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                  className="inline-flex items-center rounded-2xl border border-slate-700/80 bg-slate-900/90 px-4 py-3 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
                 >
                   Open savings page
                 </Link>
@@ -669,7 +669,7 @@ export function Dashboard() {
                 <select
                   value={activityLimit}
                   onChange={(event) => setActivityLimit(Number(event.target.value))}
-                  className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 outline-none"
+                  className="rounded-xl border border-slate-700/80 bg-slate-900/90 px-3 py-2 text-sm text-slate-200 outline-none"
                 >
                   {[5, 10, 20, 50].map((count) => (
                     <option key={count} value={count}>
@@ -878,7 +878,7 @@ export function Dashboard() {
       <button
         type="button"
         onClick={openQuickAdd}
-        className="fixed bottom-5 right-5 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-violet-600 text-4xl font-light text-white shadow-[0_20px_50px_rgba(124,58,237,0.45)] transition hover:scale-[1.02] hover:bg-violet-500"
+        className="fixed bottom-5 right-5 z-40 flex h-15 w-15 items-center justify-center rounded-full bg-sky-600 text-4xl font-light text-white shadow-[0_16px_36px_rgba(15,23,42,0.42)] transition hover:scale-[1.02] hover:bg-sky-500"
         aria-label="Add transaction"
       >
         +
@@ -886,10 +886,10 @@ export function Dashboard() {
 
       {isQuickAddOpen ? (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm">
-          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-lg rounded-t-[32px] border border-slate-800 bg-slate-950 p-5 shadow-2xl sm:bottom-6 sm:rounded-[32px]">
+          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-lg rounded-t-[28px] border border-slate-700/80 bg-[#0b1422] p-5 shadow-2xl sm:bottom-6 sm:rounded-[24px]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-300">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-300">
                   Quick Add
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold text-slate-50">
@@ -908,7 +908,7 @@ export function Dashboard() {
               <button
                 type="button"
                 onClick={() => setQuickAddOpen(false)}
-                className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                className="rounded-2xl border border-slate-700/80 bg-slate-900/90 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
               >
                 Close
               </button>
@@ -920,7 +920,7 @@ export function Dashboard() {
                 onClick={() => setQuickAddMode("expense")}
                 className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
                   quickAddMode === "expense"
-                    ? "bg-violet-600 text-white"
+                    ? "bg-sky-600 text-white"
                     : "text-slate-300 hover:bg-slate-800"
                 }`}
               >
@@ -931,7 +931,7 @@ export function Dashboard() {
                 onClick={() => setQuickAddMode("cash")}
                 className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
                   quickAddMode === "cash"
-                    ? "bg-sky-600 text-white"
+                    ? "bg-slate-100 text-slate-950"
                     : "text-slate-300 hover:bg-slate-800"
                 }`}
               >
@@ -1017,7 +1017,7 @@ export function Dashboard() {
 
                 <button
                   type="submit"
-                  className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
+                  className="w-full rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
                 >
                   {editingExpenseId ? "Update expense" : "Save expense"}
                 </button>
@@ -1081,7 +1081,7 @@ export function Dashboard() {
 
                 <button
                   type="submit"
-                  className="w-full rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
+                  className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
                 >
                   Save money received
                 </button>
@@ -1092,9 +1092,9 @@ export function Dashboard() {
       ) : null}
 
       {showSalaryPrompt ? (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm">
-          <div className="absolute inset-x-4 top-24 mx-auto max-w-md rounded-[28px] border border-slate-800 bg-slate-950 p-5 shadow-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-300">
+      <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm">
+          <div className="absolute inset-x-4 top-24 mx-auto max-w-md rounded-[24px] border border-slate-700/80 bg-[#0b1422] p-5 shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-300">
               Salary Check
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-slate-50">
@@ -1108,14 +1108,14 @@ export function Dashboard() {
               <button
                 type="button"
                 onClick={handleConfirmSalary}
-                className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                className="flex-1 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
               >
                 Yes, add salary
               </button>
               <button
                 type="button"
                 onClick={handleDismissSalaryPrompt}
-                className="flex-1 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                className="flex-1 rounded-2xl border border-slate-700/80 bg-slate-900/90 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
               >
                 Not yet
               </button>
@@ -1139,7 +1139,7 @@ function Surface({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[28px] border border-slate-800 bg-slate-950/80 p-5 shadow-[0_24px_70px_rgba(2,6,23,0.35)]">
+    <section className="rounded-[24px] border border-slate-700/70 bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(11,20,34,0.96))] p-5 shadow-[0_14px_36px_rgba(2,6,23,0.24)]">
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-slate-50">{title}</h2>
@@ -1170,7 +1170,7 @@ function SegmentedControl<T extends string>({
           onClick={() => onChange(option.value)}
           className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
             value === option.value
-              ? "bg-violet-600 text-white"
+              ? "bg-sky-600 text-white"
               : "text-slate-300 hover:bg-slate-800"
           }`}
         >
@@ -1183,7 +1183,7 @@ function SegmentedControl<T extends string>({
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[24px] border border-slate-800 bg-slate-950/80 p-4">
+    <div className="rounded-[20px] border border-slate-700/70 bg-slate-950/70 p-4">
       <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
         {label}
       </p>
@@ -1194,7 +1194,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 
 function MiniInsight({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-4">
+    <div className="rounded-2xl border border-slate-700/70 bg-slate-900/85 px-4 py-4">
       <p className="text-sm text-slate-500">{label}</p>
       <p className="mt-1 text-xl font-semibold tracking-tight text-slate-50">{value}</p>
     </div>
@@ -1213,10 +1213,10 @@ function BalanceBar({
   tone: "violet" | "sky";
 }) {
   const width = total > 0 ? Math.max(8, Math.round((amount / total) * 100)) : 0;
-  const color = tone === "sky" ? "bg-sky-500" : "bg-violet-500";
+      const color = tone === "sky" ? "bg-sky-500" : "bg-sky-600";
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-4">
+    <div className="rounded-2xl border border-slate-700/70 bg-slate-900/85 px-4 py-4">
       <div className="flex items-center justify-between gap-3">
         <p className="font-medium text-slate-100">{label}</p>
         <p className="text-sm font-semibold text-slate-300">{formatCurrency(amount)}</p>
@@ -1291,10 +1291,10 @@ function BudgetRuleCard({
         : "Over";
   const toneClassName =
     tone === "indigo"
-      ? "bg-indigo-500/10 text-indigo-200 border-indigo-500/20"
+              ? "bg-sky-500/10 text-sky-100 border-sky-500/20"
       : tone === "orange"
-        ? "bg-orange-500/10 text-orange-200 border-orange-500/20"
-        : "bg-emerald-500/10 text-emerald-200 border-emerald-500/20";
+        ? "bg-amber-500/10 text-amber-100 border-amber-500/20"
+        : "bg-emerald-500/10 text-emerald-100 border-emerald-500/20";
 
   return (
     <div className={`rounded-2xl border px-4 py-4 ${toneClassName}`}>
@@ -1326,7 +1326,7 @@ function LedgerRow({
   onDelete: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3">
+    <div className="flex items-center justify-between rounded-2xl border border-slate-700/70 bg-slate-900/85 px-4 py-3">
       <div>
         <p className="font-medium text-slate-100">{title}</p>
         <p className="text-sm text-slate-500">{subtitle}</p>
@@ -1356,7 +1356,7 @@ function LedgerRow({
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900 px-4 py-8 text-center text-sm leading-6 text-slate-500">
+    <div className="rounded-2xl border border-dashed border-slate-700/80 bg-slate-900/75 px-4 py-8 text-center text-sm leading-6 text-slate-500">
       {text}
     </div>
   );
@@ -1506,4 +1506,4 @@ function formatAxisValue(value: number) {
 }
 
 const fieldClassName =
-  "w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-base text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-violet-500 focus:bg-slate-950";
+  "w-full rounded-2xl border border-slate-700/80 bg-slate-900/90 px-4 py-3 text-base text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-600 focus:bg-slate-950";

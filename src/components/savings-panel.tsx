@@ -299,13 +299,13 @@ export function SavingsPanel() {
     <div className="px-4 py-5 sm:px-6">
       <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-10">
         {syncError ? (
-          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <div className="rounded-2xl border border-sky-500/15 bg-sky-500/8 px-4 py-3 text-sm text-sky-100">
             <div className="flex items-center justify-between gap-3">
               <span>{syncError}</span>
               <button
                 type="button"
                 onClick={() => void retrySync()}
-                className="rounded-xl border border-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/10"
+                className="rounded-xl border border-sky-500/20 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/10"
               >
                 Retry
               </button>
@@ -313,7 +313,7 @@ export function SavingsPanel() {
           </div>
         ) : null}
 
-        <section className="rounded-[32px] border border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.18),_transparent_40%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(2,6,23,0.98))] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
+        <section className="rounded-[24px] border border-slate-700/70 bg-[linear-gradient(180deg,rgba(16,24,39,0.98),rgba(8,17,31,0.98))] p-5 shadow-[0_18px_50px_rgba(2,6,23,0.36)]">
           <div className="flex flex-col gap-5">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -329,20 +329,20 @@ export function SavingsPanel() {
               <div className="flex items-center gap-2">
                 <Link
                   href="/"
-                  className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                  className="rounded-2xl border border-slate-700/80 bg-slate-900/90 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
                 >
                   Dashboard
                 </Link>
                 <Link
                   href="/settings"
-                  className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                  className="rounded-2xl border border-slate-700/80 bg-slate-900/90 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
                 >
                   Settings
                 </Link>
                 <form action={logout}>
                   <button
                     type="submit"
-                    className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                    className="rounded-2xl border border-slate-700/80 bg-slate-900/90 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
                   >
                     Lock
                   </button>
@@ -501,7 +501,7 @@ export function SavingsPanel() {
 
               <button
                 type="submit"
-                className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
               >
                 {editingSavingsId ? "Update savings" : "Add savings"}
               </button>
@@ -612,7 +612,7 @@ export function SavingsPanel() {
 
               <button
                 type="submit"
-                className="rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
+                className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
               >
                 Add loan
               </button>
@@ -750,7 +750,7 @@ export function SavingsPanel() {
 
                         <button
                           type="submit"
-                          className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-white"
+                          className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200"
                         >
                           {editingPaymentIds[loan.id] ? "Update loan payment" : "Add loan payment"}
                         </button>
@@ -806,7 +806,7 @@ function Surface({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[28px] border border-slate-800 bg-slate-950/80 p-5 shadow-[0_24px_70px_rgba(2,6,23,0.35)]">
+    <section className="rounded-[24px] border border-slate-700/70 bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(11,20,34,0.96))] p-5 shadow-[0_14px_36px_rgba(2,6,23,0.24)]">
       <div className="mb-5">
         <h2 className="text-lg font-semibold text-slate-50">{title}</h2>
         <p className="mt-1 text-sm text-slate-500">{description}</p>
@@ -818,7 +818,7 @@ function Surface({
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-4">
+    <div className="rounded-2xl border border-slate-700/70 bg-slate-900/85 px-4 py-4">
       <p className="text-sm text-slate-500">{label}</p>
       <p className="mt-1 text-xl font-semibold text-slate-50">{value}</p>
     </div>
@@ -882,7 +882,7 @@ function LedgerRow({
   onDelete: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3">
+    <div className="flex items-center justify-between rounded-2xl border border-slate-700/70 bg-slate-900/85 px-4 py-3">
       <div>
         <p className="font-medium text-slate-100">{title}</p>
         <p className="text-sm text-slate-500">{subtitle}</p>
@@ -912,7 +912,7 @@ function LedgerRow({
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900 px-4 py-8 text-center text-sm leading-6 text-slate-500">
+    <div className="rounded-2xl border border-dashed border-slate-700/80 bg-slate-900/75 px-4 py-8 text-center text-sm leading-6 text-slate-500">
       {text}
     </div>
   );
@@ -977,4 +977,4 @@ function getClampedMonthDay(year: number, monthIndex: number, day: number) {
 }
 
 const fieldClassName =
-  "w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-base text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-emerald-500 focus:bg-slate-950";
+  "w-full rounded-2xl border border-slate-700/80 bg-slate-900/90 px-4 py-3 text-base text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-600 focus:bg-slate-950";

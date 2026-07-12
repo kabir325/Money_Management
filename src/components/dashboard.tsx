@@ -54,7 +54,13 @@ type CashFormState = {
   note: string;
 };
 
-type QuickAddMode = "expense" | "cash";
+type TransferFormState = {
+  amount: string;
+  fromAccount: BalanceSource;
+  toAccount: BalanceSource;
+};
+
+type QuickAddMode = "expense" | "cash" | "transfer";
 type ComparisonView = "daily" | "monthly" | "yearly";
 
 const chartGrid = "rgba(148,163,184,0.12)";
@@ -83,6 +89,12 @@ const defaultCashForm = (): CashFormState => ({
   note: "",
 });
 
+const defaultTransferForm = (): TransferFormState => ({
+  amount: "",
+  fromAccount: "cash",
+  toAccount: "bank",
+});
+
 export function Dashboard() {
   const {
     data,
@@ -92,6 +104,7 @@ export function Dashboard() {
     addExpense,
     addCashEntry,
     addSalaryEntry,
+    transferBetweenAccounts,
     updateExpense,
     removeExpense,
     removeCashEntry,
@@ -104,6 +117,7 @@ export function Dashboard() {
     defaultExpenseForm(DEFAULT_DATA),
   );
   const [cashForm, setCashForm] = useState<CashFormState>(defaultCashForm);
+  const [transferForm, setTransferForm] = useState<TransferFormState>(defaultTransferForm);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [salaryPromptDismissedKey, setSalaryPromptDismissedKey] = useState<string | null>(() =>
     typeof window === "undefined"
@@ -361,6 +375,7 @@ export function Dashboard() {
   const openQuickAdd = () => {
     setExpenseForm(defaultExpenseForm(data));
     setCashForm(defaultCashForm());
+    setTransferForm(defaultTransferForm());
     setQuickAddMode("expense");
     setEditingExpenseId(null);
     setQuickAddOpen(true);
@@ -435,6 +450,27 @@ export function Dashboard() {
     });
 
     setCashForm(defaultCashForm());
+    setQuickAddOpen(false);
+  };
+
+  const handleTransferBetweenAccounts = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const amount = Number(transferForm.amount);
+
+    if (
+      amount <= 0 ||
+      transferForm.fromAccount === transferForm.toAccount
+    ) {
+      return;
+    }
+
+    transferBetweenAccounts({
+      amount,
+      fromAccount: transferForm.fromAccount,
+      toAccount: transferForm.toAccount,
+    });
+
+    setTransferForm(defaultTransferForm());
     setQuickAddOpen(false);
   };
 
@@ -897,12 +933,16 @@ export function Dashboard() {
                     ? editingExpenseId
                       ? "Edit expenditure"
                       : "Add expenditure"
-                    : "Add money received"}
+                    : quickAddMode === "cash"
+                      ? "Add money received"
+                      : "Transfer balance"}
                 </h2>
                 <p className="mt-2 text-sm text-slate-400">
                   {quickAddMode === "expense"
                     ? "Track what you spent and whether it came from bank or cash."
-                    : "Track money you received and where you kept it."}
+                    : quickAddMode === "cash"
+                      ? "Track money you received and where you kept it."
+                      : "Move money between cash and bank without creating a transaction record."}
                 </p>
               </div>
               <button
@@ -914,7 +954,7 @@ export function Dashboard() {
               </button>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-slate-800 bg-slate-900 p-1">
+            <div className="mt-6 grid grid-cols-3 gap-2 rounded-2xl border border-slate-800 bg-slate-900 p-1">
               <button
                 type="button"
                 onClick={() => setQuickAddMode("expense")}
@@ -936,6 +976,17 @@ export function Dashboard() {
                 }`}
               >
                 Money received
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickAddMode("transfer")}
+                className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                  quickAddMode === "transfer"
+                    ? "bg-slate-700 text-white"
+                    : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                Transfer
               </button>
             </div>
 
@@ -1022,7 +1073,7 @@ export function Dashboard() {
                   {editingExpenseId ? "Update expense" : "Save expense"}
                 </button>
               </form>
-            ) : (
+            ) : quickAddMode === "cash" ? (
               <form onSubmit={handleAddCashEntry} className="mt-6 space-y-4">
                 <Input
                   label="Money source"
@@ -1084,6 +1135,63 @@ export function Dashboard() {
                   className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
                 >
                   Save money received
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleTransferBetweenAccounts} className="mt-6 space-y-4">
+                <Input
+                  label="Amount"
+                  type="number"
+                  value={transferForm.amount}
+                  onChange={(value) =>
+                    setTransferForm((current) => ({ ...current, amount: value }))
+                  }
+                  placeholder="0"
+                />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Move from">
+                    <select
+                      value={transferForm.fromAccount}
+                      onChange={(event) =>
+                        setTransferForm((current) => ({
+                          ...current,
+                          fromAccount: event.target.value === "cash" ? "cash" : "bank",
+                        }))
+                      }
+                      className={fieldClassName}
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="bank">Bank</option>
+                    </select>
+                  </Field>
+                  <Field label="Move to">
+                    <select
+                      value={transferForm.toAccount}
+                      onChange={(event) =>
+                        setTransferForm((current) => ({
+                          ...current,
+                          toAccount: event.target.value === "cash" ? "cash" : "bank",
+                        }))
+                      }
+                      className={fieldClassName}
+                    >
+                      <option value="bank">Bank</option>
+                      <option value="cash">Cash</option>
+                    </select>
+                  </Field>
+                </div>
+
+                <div className="rounded-2xl border border-slate-700/70 bg-slate-900/85 px-4 py-4 text-sm leading-6 text-slate-400">
+                  This only moves money between your balances. It does not create an expense,
+                  income, or activity record.
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200"
+                >
+                  Move balance
                 </button>
               </form>
             )}

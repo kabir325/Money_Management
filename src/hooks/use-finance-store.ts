@@ -80,6 +80,11 @@ type AddLoanPaymentInput = {
 type UpdateExpenseInput = AddExpenseInput;
 type UpdateSavingsInput = AddSavingsInput;
 type UpdateLoanPaymentInput = Omit<AddLoanPaymentInput, "loanId">;
+type TransferBetweenAccountsInput = {
+  amount: number;
+  fromAccount: BalanceSource;
+  toAccount: BalanceSource;
+};
 
 const SYNC_POLL_MS = 5000;
 
@@ -251,6 +256,27 @@ export function useFinanceStore() {
       ...current,
       emergencyFundProfile,
     }));
+  };
+
+  const transferBetweenAccounts = (input: TransferBetweenAccountsInput) => {
+    if (
+      input.fromAccount === input.toAccount ||
+      !Number.isFinite(input.amount) ||
+      input.amount <= 0
+    ) {
+      return;
+    }
+
+    updateData((current) => {
+      const reduced = applyAccountDelta(current, input.fromAccount, -input.amount);
+      const nextBase = { ...current, ...reduced };
+      const increased = applyAccountDelta(nextBase, input.toAccount, input.amount);
+
+      return {
+        ...nextBase,
+        ...increased,
+      };
+    });
   };
 
   const addExpense = (input: AddExpenseInput) => {
@@ -638,6 +664,7 @@ export function useFinanceStore() {
     updateSalaryDay,
     updateSalaryAmount,
     updateEmergencyFundProfile,
+    transferBetweenAccounts,
     addExpense,
     addSavings,
     addCashEntry,
